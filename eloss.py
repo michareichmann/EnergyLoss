@@ -17,6 +17,7 @@ class Element(object):
         self.A0 = a
         self.K = k
         self.D0 = d0
+        self.EPlasma = sqrt(self.Density * self.Z / self.A) * 28.816 * 1e-6  # MeV
 
 
 class Particle(object):
@@ -42,10 +43,6 @@ Electron = Particle('Electron', constants.electron_mass, 2.6033e-8)
 def w_max(p, m):
     """returns maximum energy transfer in a single collsion with a free electron in [MeV]"""
     return 2 * M_E * beta_gamma(p, m) ** 2 / (1 + lorentz_factor(calc_speed(p, m)) / m + (M_E / m) ** 2)
-
-
-def plasma_energy(el: Element):
-    return sqrt(el.Density * el.Z / el.A) * 28.816 * 1e-6
 
 
 def get_x(p, part: Particle):
