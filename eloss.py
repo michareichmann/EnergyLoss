@@ -1,23 +1,27 @@
 #!/usr/bin/env python
 from root_draw import *
 import periodictable as pt
-from numpy import log
+from numpy import log, genfromtxt
+
+
+Dir = dirname(realpath(__file__))
 
 
 class Element(object):
-    def __init__(self, el: pt.core.Element, excitation_energy, cd, x0, x1, a, k, d0=0., density=None, name=None):
+    def __init__(self, el: pt.core.Element, density=None, name=None):
         self.Name = choose(name, el.name.title())
         self.Z = el.number
         self.A = el.mass
-        self.IE = excitation_energy * 1e-6
+        self.DataFile = join(Dir, 'data', '{}.txt'.format(self.Name))
+        self.A0, self.K, self.X0, self.X1, self.IE, self.C, self.D0 = genfromtxt(self.DataFile, skip_header=4, max_rows=1)
+        self.IE *= 1e-6  # convert to MeV
         self.Density = choose(density, el.density)
-        self.C = cd
-        self.X0 = x0
-        self.X1 = x1
-        self.A0 = a
-        self.K = k
-        self.D0 = d0
         self.EPlasma = sqrt(self.Density * self.Z / self.A) * 28.816 * 1e-6  # MeV
+
+    def draw_data(self):
+        g = Draw.make_tgrapherrors(*genfromtxt(self.DataFile, usecols=[1, 2], skip_header=10).T, markersize=.7)
+        g.Draw('p')
+        return g
 
 
 class Particle(object):
@@ -31,9 +35,9 @@ class Particle(object):
 
 
 K = 4 * constants.pi * constants.Avogadro * constants.physical_constants['classical electron radius'][0] ** 2 * M_E * 1e4  # MeV * cm^2 / mol
-Si = Element(pt.silicon, 173, 4.4351, 0.2014, 2.8715, 0.14921, 3.2546, 0.14)
-Dia = Element(pt.carbon, 78, 2.868, -0.0178, 2.3415, 0.26142, 2.8697, density=3.5, name='Diamond')
-Cu = Element(pt.copper, 322, 4.4190, -0.0254, 3.2792, 0.14339, 2.9044, 0.08)
+Si = Element(pt.silicon)
+Dia = Element(pt.carbon, density=3.52, name='Diamond')
+Cu = Element(pt.copper)
 
 Muon = Particle('Muon', constants.physical_constants['muon mass'][0], 2.1969e-6)
 Pion = Particle('Pion', 139.57018, 2.6033e-8)
@@ -59,11 +63,15 @@ def density_correction(p, part: Particle, el: Element):
         return el.D0 * 10 ** (2 * (x - el.X0))
 
 
+def offset(p, part: Particle, el: Element):
+    return K * el.Z / el.A / calc_speed(p, part.M) ** 2 * density_correction(p, part, el) / 2
+
+
 def bethe_bloch(p, part: Particle, el: Element, dens_corr=True):
     """returns the mean energy loss of particle of momentum p and mass m in el [MeV * cm^2 / g]"""
     b = calc_speed(p, part.M)
     d = density_correction(p, part, el) if dens_corr else 0
-    return K * el.Z / el.A / b ** 2 * (.5 * log(2 * M_E * b ** 2 * lorentz_factor(b) * w_max(p, part.M) / el.IE ** 2) - b ** 2 - d / 2)
+    return K * el.Z / el.A / b ** 2 * (.5 * log(2 * M_E * beta_gamma(p, part.M) ** 2 * w_max(p, part.M) / el.IE ** 2) - b ** 2 - d / 2)
 
 
 def draw_density_correction(part: Particle, el: Element, pmin=10, pmax=1e6):
@@ -72,14 +80,24 @@ def draw_density_correction(part: Particle, el: Element, pmin=10, pmax=1e6):
     format_histo(f, x_tit='#beta#gamma', y_tit='Value', y_off=1.1, center_y=True, center_x=True)
 
 
-def draw_bethe(part: Particle, el: Element, pmin=90, pmax=1e6):
+def get_minimum(p: Particle = Pion, el: Element = Dia):
+    pmin = Draw.make_tf1('', bethe_bloch, 100, 1e6, part=p, el=el).GetMinimumX()
+    info('Minimum: {} MeV (betagamma = {}'.format(pmin, beta_gamma(pmin, p.M)))
+    return pmin
+
+
+def draw_bethe(part: Particle, el: Element, pmin=10, pmax=1e6, draw_data=False):
     f = Draw.make_tf1('Bethe-Bloch for {}s in {}'.format(part.Name, el.Name), bethe_bloch, pmin, pmax, part=part, el=el)
     f0 = Draw.make_tf1('', bethe_bloch, pmin, pmax, 4, part=part, el=el, dens_corr=False)
-    Draw.histo(f, logx=True, logy=True)
-    Draw.legend([f, f0], ['Bethe Bloch', 'without #delta'], 'l')
+    Draw.histo(f, logx=True, logy=True, grid=True)
+    leg = Draw.legend([f, f0], ['Bethe Bloch', 'without #delta'] + ['b'] if draw_data else [], 'l')
     format_histo(f, x_tit='{} Momentum [Mev/c]'.format(part.Name), y_tit='Mass Stopping Power [MEV cm^{2}/g]', y_off=1.3, center_x=True, center_y=True, y_range=[1, 2 * f.GetMaximum()], x_off=1.3)
     f0.Draw('same')
     f0.SetLineStyle(7)
+    if draw_data and part.Name == 'Muon':
+        g = el.draw_data()
+        leg.AddEntry(g, 'TCut = 0.05 MeV', 'p')
+    return f
 
 
 def beta_gamma_range():
