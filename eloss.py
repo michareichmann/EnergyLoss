@@ -1,10 +1,11 @@
 #!/usr/bin/env python
-from root_draw import *
+from draw import *
 import periodictable as pt
-from numpy import log, genfromtxt
+from numpy import log, genfromtxt, inf, diff
 
 
 Dir = dirname(realpath(__file__))
+draw = Draw(join(Dir, 'main.ini'))
 
 
 class Element(object):
@@ -25,7 +26,7 @@ class Element(object):
 
 
 class Particle(object):
-    def __init__(self, name, mass, lifetime):
+    def __init__(self, name, mass, lifetime=inf):
         self.Name = name
         self.M = mass / constants.e * constants.c**2 / 1e6 if mass < 1e-10 else mass
         self.Tau = lifetime
@@ -41,7 +42,8 @@ Cu = Element(pt.copper)
 
 Muon = Particle('Muon', constants.physical_constants['muon mass'][0], 2.1969e-6)
 Pion = Particle('Pion', 139.57018, 2.6033e-8)
-Electron = Particle('Electron', constants.electron_mass, 2.6033e-8)
+Electron = Particle('Electron', constants.electron_mass)
+Proton = Particle('Proton', constants.proton_mass)
 
 
 def w_max(p, m):
@@ -67,11 +69,12 @@ def offset(p, part: Particle, el: Element):
     return K * el.Z / el.A / calc_speed(p, part.M) ** 2 * density_correction(p, part, el) / 2
 
 
-def bethe_bloch(p, part: Particle, el: Element, dens_corr=True):
-    """returns the mean energy loss of particle of momentum p and mass m in el [MeV * cm^2 / g]"""
+def bethe_bloch(bg, part: Particle, el: Element, dens_corr=True):
+    """returns the mean energy loss of particle of momentum p and mass m in el [MeV / cm]"""
+    p = part.M * bg
     b = calc_speed(p, part.M)
     d = density_correction(p, part, el) if dens_corr else 0
-    return K * el.Z / el.A / b ** 2 * (.5 * log(2 * M_E * beta_gamma(p, part.M) ** 2 * w_max(p, part.M) / el.IE ** 2) - b ** 2 - d / 2)
+    return K * el.Density * el.Z / el.A / b ** 2 * (.5 * log(2 * M_E * bg ** 2 * w_max(p, part.M) / el.IE ** 2) - b ** 2 - d / 2)
 
 
 def draw_density_correction(part: Particle, el: Element, pmin=10, pmax=1e6):
@@ -81,19 +84,42 @@ def draw_density_correction(part: Particle, el: Element, pmin=10, pmax=1e6):
 
 
 def get_minimum(p: Particle = Pion, el: Element = Dia):
-    pmin = Draw.make_tf1('', bethe_bloch, 100, 1e6, part=p, el=el).GetMinimumX()
-    info('Minimum: {} MeV (betagamma = {}'.format(pmin, beta_gamma(pmin, p.M)))
-    return pmin
+    f = Draw.make_tf1('', bethe_bloch, 100, 1e6, part=p, el=el)
+    emin, pmin = f.GetMinimum(), f.GetMinimumX()
+    info('Minimum: {:1.1f} Mev cm2/g at {:1.1f} MeV (betagamma = {:1.2f})'.format(emin, pmin, beta_gamma(pmin, p.M)))
+    return emin, pmin
 
 
-def draw_bethe(part: Particle, el: Element, pmin=10, pmax=1e6, draw_data=False):
-    f = Draw.make_tf1('Bethe-Bloch for {}s in {}'.format(part.Name, el.Name), bethe_bloch, pmin, pmax, part=part, el=el)
-    f0 = Draw.make_tf1('', bethe_bloch, pmin, pmax, 4, part=part, el=el, dens_corr=False)
-    Draw.histo(f, logx=True, logy=True, grid=True)
-    leg = Draw.legend([f, f0], ['Bethe Bloch', 'without #delta'] + ['b'] if draw_data else [], 'l')
-    format_histo(f, x_tit='{} Momentum [Mev/c]'.format(part.Name), y_tit='Mass Stopping Power [MEV cm^{2}/g]', y_off=1.3, center_x=True, center_y=True, y_range=[1, 2 * f.GetMaximum()], x_off=1.3)
-    f0.Draw('same')
-    f0.SetLineStyle(7)
+def get_str(p, el):
+    return 'for {}s in {}'.format(p.Name, el.Name)
+
+
+def get_rel_to_mip(p, part: Particle = Pion, el: Element = Dia):
+    v = bethe_bloch(p, part, el) / get_minimum(part, el)[0]
+    info('Relativ energy loss compared to a MIP {}: {:1.2f}'.format(get_str(part, el), v))
+    return v
+
+
+def get_fall_coeff(p: Particle = Pion, el: Element = Dia):
+    x = arange(10, 100)
+    g = Draw.make_tgrapherrors(x, [bethe_bloch(ix, p, el) for ix in x])
+    fit = TF1('fit', '[0] * (x - [1])^[2]', 10, 100)
+    g.Fit(fit, 'q0')
+    info('Fall coefficient for {}s in {}: {:1.2f} ({:1.2f})'.format(p.Name, el.Name, fit.GetParameter(2), fit.GetParError(2)))
+
+
+def draw_bethe(part: Particle, el: Element, bg_min=1, bg_max=1e3, draw_data=False, y_range=None):
+    f = Draw.make_tf1('', bethe_bloch, bg_min, bg_max, part=part, el=el)
+    f0 = Draw.make_tf1('Bethe-Bloch for {}s in {}'.format(part.Name, el.Name), bethe_bloch, bg_min, bg_max, 4, part=part, el=el, dens_corr=False)
+    draw.histo(f0, logx=True, grid=True, w=2, h=1.2, lm=.07, bm=.4)
+    leg = Draw.legend([f, f0], ['Bethe Bloch', 'without #delta'] + (['b'] if draw_data else []), 'l', x2=.96, w=.2, scale=1.7)
+    y_range = choose(y_range, [1, 10])
+    format_histo(f0, x_tit='#beta#gamma'.format(part.Name), y_tit='Linear Stopping Power [MeV/cm]', center_x=True, center_y=True, y_range=y_range, x_off=1.3, y_off=.65, line_style=7,
+                 line_color=draw.get_color(2, 1), tit_size=.05, lab_size=.05)
+    format_histo(f, line_color=draw.get_color(2, 0))
+    f.Draw('same')
+    Draw.x_axis(y_range[0] - diff(y_range)[0] * .23 / .67, bg_min, bg_max, '{} Momentum [MeV/c]'.format(part.Name), array([bg_min, bg_max]) * part.M, center=True, log=True, off=1.3, tit_size=.05,
+                lab_size=.05)
     if draw_data and part.Name == 'Muon':
         g = el.draw_data()
         leg.AddEntry(g, 'TCut = 0.05 MeV', 'p')
