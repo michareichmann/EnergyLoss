@@ -74,12 +74,14 @@ def density_correction(p, part: Particle, el: Element):
         return el.D0 * 10 ** (2 * (x - el.X0))
 
 
-def bethe_bloch(bg, part: Particle, el: Element, dens_corr=True):
+def bethe_bloch(bg, part: Particle, el: Element, dens_corr=True, w_cut=None):
     """returns the mean energy loss of particle of momentum p and mass m in el [MeV / cm]"""
     p = part.M * bg
     b = calc_speed(p, part.M)
     d = density_correction(p, part, el) if dens_corr else 0
-    return K * el.Density * el.Z / el.A / b ** 2 * (.5 * log(2 * M_E * bg ** 2 * w_max(p, part.M) / el.IE ** 2) - b ** 2 - d / 2)
+    wmax = w_max(p, part.M)
+    w_cut = wmax if w_cut is None else min(w_cut, wmax)
+    return K * el.Density * el.Z / el.A / b ** 2 * (.5 * log(2 * M_E * bg ** 2 * w_cut / el.IE ** 2) - b ** 2 / 2 * (1 + w_cut / wmax) - d / 2)
 
 
 def delta_rays(wmin, dx, p, part: Particle, el: Element):
@@ -89,10 +91,10 @@ def delta_rays(wmin, dx, p, part: Particle, el: Element):
 
 
 def get_minimum(p: Particle = Pion, el: Element = Dia):
-    f = Draw.make_tf1('', bethe_bloch, 100, 1e6, part=p, el=el)
-    emin, pmin = f.GetMinimum(), f.GetMinimumX()
-    info('Minimum: {:1.1f} Mev cm2/g at {:1.1f} MeV (betagamma = {:1.2f})'.format(emin, pmin, beta_gamma(pmin, p.M)))
-    return emin, pmin
+    f = Draw.make_tf1('', bethe_bloch, .1, 1e6, part=p, el=el)
+    emin, bg = f.GetMinimum(), f.GetMinimumX()
+    info('Minimum: {:1.2f} Mev/cm at {:1.0f} MeV (betagamma = {:1.2f})'.format(emin, bg * p.M, bg))
+    return emin, bg * p.M
 
 
 def get_str(p, el):
@@ -119,28 +121,29 @@ def draw_density_correction(part: Particle, el: Element, pmin=10, pmax=1e6):
     format_histo(f, x_tit='#beta#gamma', y_tit='Value', y_off=1.1, center_y=True, center_x=True)
 
 
-def draw_bethe(part: Particle, el: Element, bg_min=1, bg_max=1e3, draw_data=False, y_range=None):
-    f = Draw.make_tf1('', bethe_bloch, bg_min, bg_max, part=part, el=el)
-    f0 = Draw.make_tf1('Bethe-Bloch for {}s in {}'.format(part.Name, el.Name), bethe_bloch, bg_min, bg_max, 4, part=part, el=el, dens_corr=False)
-    draw.histo(f0, logx=True, grid=True, w=2, h=1.2, lm=.07, bm=.4)
-    leg = Draw.legend([f, f0], ['Bethe Bloch', 'without #delta'] + (['b'] if draw_data else []), 'l', x2=.96, w=.2, scale=1.7)
+def draw_bethe(part: Particle, el: Element, bg_min=1, bg_max=1e3, y_range=None, w_cut=None):
+    n = len(make_list(w_cut)) + 2
+    f = Draw.make_tf1('', bethe_bloch, bg_min, bg_max, part=part, el=el, color=draw.get_color(n))
+    e_min = get_minimum(part, el)[0]
+    fcut = [Draw.make_tf1('', bethe_bloch, bg_min, bg_max, color=draw.get_color(n), style=9, part=part, el=el, w_cut=v * e_min) for v in make_list(w_cut)]
+    f0 = Draw.make_tf1('Bethe-Bloch for {}s in {}'.format(part.Name, el.Name), bethe_bloch, bg_min, bg_max, color=draw.get_color(n), part=part, el=el, dens_corr=False)
+    draw.histo(f0, logx=True, grid=True, w=2, h=1.2, lm=.08, bm=.4)
+    Draw.legend([f, f0] + fcut, ['Bethe Bloch', 'without #delta'] + ['W_{{cut}}={}dE/dx_{{min}}'.format(i) for i in make_list(w_cut)], 'l', x2=.96, w=.2, scale=1.4)
     y_range = choose(y_range, [1, 10])
-    format_histo(f0, x_tit='#beta#gamma'.format(part.Name), y_tit='Linear Stopping Power [MeV/cm]', center_x=True, center_y=True, y_range=y_range, x_off=1.3, y_off=.65, line_style=7,
+    format_histo(f0, x_tit='#beta#gamma'.format(part.Name), y_tit='Linear Stopping Power [MeV/cm]', center_x=True, center_y=True, y_range=y_range, x_off=1.3, y_off=.8, line_style=7,
                  line_color=draw.get_color(2, 1), tit_size=.05, lab_size=.05)
     format_histo(f, line_color=draw.get_color(2, 0))
-    f.Draw('same')
+    for f in fcut + [f]:
+        f.Draw('same')
     Draw.x_axis(y_range[0] - diff(y_range)[0] * .23 / .67, bg_min, bg_max, '{} Momentum [MeV/c]'.format(part.Name), array([bg_min, bg_max]) * part.M, center=True, log=True, off=1.3, tit_size=.05,
                 lab_size=.05)
-    if draw_data and part.Name == 'Muon':
-        g = el.draw_data()
-        leg.AddEntry(g, 'TCut = 0.05 MeV', 'p')
     return f
 
 
-def draw_drays(p, dx, part: Particle, el: Element, wmin=1e-3, y_range=[1e-5, 10]):
+def draw_drays(p, dx, part: Particle, el: Element, wmin=1e-3, y_range=None):
     f = Draw.make_tf1('Delta Rays for {}s in {} cm {}'.format(part.Name, dx, el.Name), delta_rays, wmin, w_max(p, part.M), dx=dx, p=p, part=part, el=el)
     Draw.histo(f, logx=True, logy=True, lm=.13, bm=.22)
-    format_histo(f, x_tit='T_{min} [MeV]', y_tit='N_{#delta}', y_off=1.3, center_y=True, center_x=True, x_off=1.4, y_range=y_range, tit_size=.05, lab_size=.045)
+    format_histo(f, x_tit='T_{min} [MeV]', y_tit='N_{#delta}', y_off=1.3, center_y=True, center_x=True, x_off=1.4, y_range=choose(y_range, [1e-5, 10]), tit_size=.05, lab_size=.045)
 
 
 def beta_gamma_range():
