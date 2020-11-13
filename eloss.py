@@ -2,14 +2,13 @@
 from draw import *
 import periodictable as pt
 from numpy import log, genfromtxt, inf, diff
-
+from typing import Any
 
 Dir = dirname(realpath(__file__))
-draw = Draw(join(Dir, 'main.ini'))
 
 
 class Element(object):
-    def __init__(self, el: pt.core.Element, density=None, name=None):
+    def __init__(self, el: pt.core.Element, e_eh=1., density=None, name=None):
         self.Name = choose(name, el.name.title())
         self.Z = el.number
         self.A = el.mass
@@ -18,6 +17,7 @@ class Element(object):
         self.IE *= 1e-6  # convert to MeV
         self.Density = choose(density, el.density)
         self.EPlasma = sqrt(self.Density * self.Z / self.A) * 28.816 * 1e-6  # MeV
+        self.EEH = e_eh  # eV
 
     def __repr__(self):
         header = ['Name', 'Z', 'A [g/mol]', 'ρ [g/cm3]', 'a', 'k', 'x0', 'x1', 'I [MeV]', 'C', 'δ0', 'EPlasma [MeV]']
@@ -32,7 +32,7 @@ class Element(object):
 class Particle(object):
     def __init__(self, name, mass, lifetime=inf):
         self.Name = name
-        self.M = mass / constants.e * constants.c**2 / 1e6 if mass < 1e-10 else mass
+        self.M = mass / constants.e * constants.c ** 2 / 1e6 if mass < 1e-10 else mass
         self.Tau = lifetime
 
     def __repr__(self):
@@ -40,8 +40,8 @@ class Particle(object):
 
 
 K = 4 * constants.pi * constants.Avogadro * constants.physical_constants['classical electron radius'][0] ** 2 * M_E * 1e4  # MeV * cm^2 / mol
-Si = Element(pt.silicon)
-Dia = Element(pt.carbon, density=3.52, name='Diamond')
+Si = Element(pt.silicon, e_eh=3.68)
+Dia = Element(pt.carbon, e_eh=13.3, density=3.52, name='Diamond')
 Cu = Element(pt.copper)
 Ar = Element(pt.argon, density=1.662e-3)
 
@@ -51,99 +51,170 @@ Electron = Particle('Electron', constants.electron_mass)
 Proton = Particle('Proton', constants.proton_mass)
 
 
-def w_max(p, m):
-    """returns maximum energy transfer in a single collsion with a free electron in [MeV]"""
-    return 2 * M_E * beta_gamma(p, m) ** 2 / (1 + lorentz_factor(calc_speed(p, m)) / m + (M_E / m) ** 2)
+class Eloss(object):
+
+    def __init__(self, part: Particle, el: Element, thickness=500, absolute=False):
+        self.Linear = not absolute
+        self.P = part
+        self.El = el
+        self.T = thickness * 1e-4  # um to cm
+        self.X = self.T * self.El.Density
+        self.F0 = None
+        self.F = self.make_f()
+        self.Draw = Draw(join(Dir, 'main.ini'))
+
+    def __call__(self, p, part: Particle = None, el: Element = None):
+        self.reload(part, el)
+        return self.F(p / self.P.M)
+
+    def reload(self, p=None, e=None):
+        if p is not None or e is not None:
+            self.P = choose(p, self.P)
+            self.El = choose(e, self.El)
+            self.F = self.make_f()
+
+    def make_f(self):
+        return TF1()
+
+    def f(self, bg):
+        pass
+
+    def draw(self, color=2, line_style=1, xmin=.1, xmax=1e3, y_range=None):
+        y_range = array(choose(y_range, [1, 10]))
+        self.Draw(self.F, logx=True, grid=True, w=2, h=1.2, lm=.1, bm=.4, rm=None if self.Linear else .1)
+        y_tit = 'Linear Stopping Power [MeV/cm]' if self.Linear else 'dE/dx in {:1.0f} #mum {} [keV]'.format(self.T * 1e4, self.El.Name)
+        format_histo(self.F, line_style=line_style, color=color, x_range=[xmin, xmax], y_range=y_range, x_tit='#beta#gamma', y_tit=y_tit,
+                     center_x=True, center_y=True, x_off=1.3, y_off=1, tit_size=.05, lab_size=.05)
+        Draw.x_axis(y_range[0] - diff(y_range)[0] * .23 / .67, xmin, xmax, '{} Momentum [MeV/c]'.format(self.P.Name), array([xmin, xmax]) * self.P.M, center=True, log=True, off=1.3,
+                    tit_size=.05, lab_size=.05)
+        if not self.Linear:
+            Draw.y_axis(xmax, *y_range, 'Induced eh-pairs #times 1000', y_range / self.El.EEH, center=True, off=1, tit_size=.05, lab_size=.05)
+
+    def draw_same(self, color=4, line_style=1):
+        format_histo(self.F, line_color=color, line_style=line_style)
+        self.F.Draw('same')
+
+    def density_correction(self, bg):
+        x = log10(bg)
+        el = self.El
+        if x >= el.X1:
+            return 2 * log(10) * x - el.C
+        elif el.X0 <= x < el.X1:
+            return 2 * log(10) * x - el.C + el.A0 * (el.X1 - x) ** el.K
+        else:
+            return el.D0 * 10 ** (2 * (x - el.X0))
+
+    def get_minimum(self, p=None, el=None):
+        self.reload(p, el)
+        emin, bg = self.F.GetMinimum(.1, 1e3), self.F.GetMinimumX(.1, 1e3)
+        info('Minimum: {:1.2f} Mev/cm at {:1.0f} MeV (betagamma = {:1.2f})'.format(emin, bg * self.P.M, bg))
+        return emin, bg * self.P.M
+
+    def get_w_max(self, p):
+        """returns maximum energy transfer in a single collsion with a free electron in [MeV]"""
+        return 2 * M_E * beta_gamma(p, self.P.M) ** 2 / (1 + lorentz_factor(calc_speed(p, self.P.M)) / self.P.M + (M_E / self.P.M) ** 2)
+
+    def get_rel_to_mip(self, p):
+        v = self(p) / self.get_minimum()[0]
+        info('Relativ energy loss compared to a MIP {}: {:1.2f}'.format(self.get_str(), v))
+        return v
+
+    def get_str(self):
+        return 'for {}s in {}'.format(self.P.Name, self.El.Name)
 
 
-def get_x(p, part: Particle):
-    return log10(p / part.M)
+class LandauVavilovBichsel(Eloss):
+
+    def __init__(self, part: Particle, el: Element, t=500, absolute=False):
+        super().__init__(part, el, t, absolute)
+
+    def make_f(self):
+        f = Draw.make_tf1('Landau Vavilov Bichsel {}'.format(self.get_str()), self.f, .1, 1e6)
+        f.SetNpx(1000)
+        return f
+
+    def f(self, bg):
+        xi = self.get_xi(bg)
+        lin_fac = 1 / self.T if self.Linear else 1000
+        return xi * (log(2 * M_E * bg ** 2 / self.El.IE) + log(xi / self.El.IE) + .2 - calc_speed(bg * self.P.M, self.P.M) ** 2 - self.density_correction(bg)) * lin_fac
+
+    def get_xi(self, bg):
+        return .5 * K * self.El.Z / self.El.A * self.X / calc_speed(bg * self.P.M, self.P.M) ** 2
 
 
-def offset(p, part: Particle, el: Element):
-    return K * el.Z / el.A / calc_speed(p, part.M) ** 2 * density_correction(p, part, el) / 2
-
-
-def density_correction(p, part: Particle, el: Element):
-    x = get_x(p, part)
-    if x >= el.X1:
-        return 2 * log(10) * x - el.C
-    elif el.X0 <= x < el.X1:
-        return 2 * log(10) * x - el.C + el.A0 * (el.X1 - x) ** el.K
-    else:
-        return el.D0 * 10 ** (2 * (x - el.X0))
-
-
-def bethe_bloch(bg, part: Particle, el: Element, dens_corr=True, w_cut=None):
+class BetheBloch(Eloss):
     """returns the mean energy loss of particle of momentum p and mass m in el [MeV / cm]"""
-    p = part.M * bg
-    b = calc_speed(p, part.M)
-    d = density_correction(p, part, el) if dens_corr else 0
-    wmax = w_max(p, part.M)
-    w_cut = wmax if w_cut is None else min(w_cut, wmax)
-    return K * el.Density * el.Z / el.A / b ** 2 * (.5 * log(2 * M_E * bg ** 2 * w_cut / el.IE ** 2) - b ** 2 / 2 * (1 + w_cut / wmax) - d / 2)
+
+    def __init__(self, part: Particle, el: Element, t=500, dens_corr: Any = True, wcut=None, absolute=False):
+        self.DensityCorr = dens_corr
+        self.WCut = wcut
+        super().__init__(part, el, t, absolute)
+
+    def get_fall_coeff(self, p=None, e=None, show=False):
+        self.reload(p, e)
+        x = linspace(.3, .8, 100)
+        g = Draw.make_tgrapherrors(x, [self.f(ix) for ix in x * lorentz_factor(x)])
+        self.Draw(g, show=show)
+        fit = TF1('fit', '[0] * (x - [1])^[2]', .1, 1)
+        g.Fit(fit, 'q')
+        info('Fall coefficient for {}: {:1.2f} ({:1.2f})'.format(self.get_str(), fit.GetParameter(2), fit.GetParError(2)))
+        return ufloat(fit.GetParameter(2), fit.GetParError(2))
+
+    def make_f(self):
+        f = Draw.make_tf1('Bethe Bloch {}'.format(self.get_str()), self.f, .1, 1e6)
+        f.SetNpx(1000)
+        return f
+
+    def f(self, bg):
+        p = self.P.M * bg
+        b0 = calc_speed(p, self.P.M)
+        d = self.density_correction(bg) if self.DensityCorr else 0
+        w_max = self.get_w_max(p)
+        w_cut = w_max if self.WCut is None else min(self.WCut, w_max)
+        lin_fac = 1 if self.Linear else self.T * 1000
+        return K * self.El.Density * self.El.Z / self.El.A / b0 ** 2 * (.5 * log(2 * M_E * bg ** 2 * w_cut / self.El.IE ** 2) - b0 ** 2 / 2 * (1 + w_cut / w_max) - d / 2) * lin_fac
+
+    def delta_rays(self, wmin, p):
+        b0 = calc_speed(p, self.P.M)
+        wmax = self.get_w_max(p)
+        return .5 * K * self.El.Z / self.El.A / b0 ** 2 * ((1 / wmin - 1 / wmax) - b0 ** 2 / wmax * log(wmax / wmin)) * self.X
+
+    def draw_delta_rays(self, p, wmin=1e-3, y_range=None):
+        f = Draw.make_tf1('Delta Rays for {}s in {:1.0f} #mum {}'.format(self.P.Name, self.T * 1e4, self.El.Name), self.delta_rays, wmin, self.get_w_max(p), p=p)
+        Draw.histo(f, logx=True, logy=True, lm=.13, bm=.22)
+        format_histo(f, x_tit='T_{min} [MeV]', y_tit='N_{#delta}', y_off=1.3, center_y=True, center_x=True, x_off=1.4, y_range=choose(y_range, [1e-5, 10]), tit_size=.05, lab_size=.045)
 
 
-def delta_rays(wmin, dx, p, part: Particle, el: Element):
-    b = calc_speed(p, part.M)
-    wmax = w_max(p, part.M)
-    return .5 * K * el.Z / el.A / b ** 2 * ((1 / wmin - 1 / wmax) - b ** 2 / wmax * log(wmax / wmin)) * dx * el.Density
+a = LandauVavilovBichsel(Muon, Si)
+b = BetheBloch(Pion, Dia)
+draw = Draw(join(Dir, 'main.ini'))
 
 
-def get_minimum(p: Particle = Pion, el: Element = Dia):
-    f = Draw.make_tf1('', bethe_bloch, .1, 1e6, part=p, el=el)
-    emin, bg = f.GetMinimum(), f.GetMinimumX()
-    info('Minimum: {:1.2f} Mev/cm at {:1.0f} MeV (betagamma = {:1.2f})'.format(emin, bg * p.M, bg))
-    return emin, bg * p.M
+def draw_dens_correction(p, el, y_range=None):
+    f, f0 = BetheBloch(p, el), BetheBloch(p, el, dens_corr=False)
+    f0.draw(color=draw.get_color(2, 1), line_style=7, y_range=y_range)
+    f.draw_same(draw.get_color(2, 0))
+    Draw.legend([f.F, f0.F], ['Bethe Bloch', 'without #delta'], 'l', x2=.96, w=.2, scale=1.4)
 
 
-def get_str(p, el):
-    return 'for {}s in {}'.format(p.Name, el.Name)
+def draw_restricted(p, el, w_cut=2, y_range=None):
+    b0 = BetheBloch(p, el)
+    n = 2 + make_list(w_cut).size
+    fs = [BetheBloch(p, el, dens_corr=d, wcut=w) for d, w in [(1, None), (0, None)] + [(1, iw) for iw in make_list(w_cut) * b0.get_minimum()[0]]]
+    fs[1].draw(color=draw.get_color(n, n - 1), line_style=7, y_range=y_range)
+    for i, f in enumerate(fs[2:], 1):
+        f.draw_same(draw.get_color(n, i), 9)
+    fs[0].draw_same(draw.get_color(n, 0))
+    Draw.legend([f.F for f in fs], ['Bethe Bloch', 'without #delta'] + ['W_{{cut}}={}dE/dx_{{min}}'.format(i) for i in make_list(w_cut)], 'l', x2=.96, w=.23, scale=1.4)
 
 
-def get_rel_to_mip(p, part: Particle = Pion, el: Element = Dia):
-    v = bethe_bloch(p, part, el) / get_minimum(part, el)[0]
-    info('Relativ energy loss compared to a MIP {}: {:1.2f}'.format(get_str(part, el), v))
-    return v
-
-
-def get_fall_coeff(p: Particle = Pion, el: Element = Dia):
-    x = arange(10, 100)
-    g = Draw.make_tgrapherrors(x, [bethe_bloch(ix, p, el) for ix in x])
-    fit = TF1('fit', '[0] * (x - [1])^[2]', 10, 100)
-    g.Fit(fit, 'q0')
-    info('Fall coefficient for {}s in {}: {:1.2f} ({:1.2f})'.format(p.Name, el.Name, fit.GetParameter(2), fit.GetParError(2)))
-
-
-def draw_density_correction(part: Particle, el: Element, pmin=10, pmax=1e6):
-    f = Draw.make_tf1('Density Correction for {}s in {}'.format(part.Name, el.Name), density_correction, pmin, pmax, part=part, el=el)
-    Draw.histo(f, logx=True, logy=True)
-    format_histo(f, x_tit='#beta#gamma', y_tit='Value', y_off=1.1, center_y=True, center_x=True)
-
-
-def draw_bethe(part: Particle, el: Element, bg_min=1, bg_max=1e3, y_range=None, w_cut=None):
-    n = len(make_list(w_cut)) + 2
-    f = Draw.make_tf1('', bethe_bloch, bg_min, bg_max, part=part, el=el, color=draw.get_color(n))
-    e_min = get_minimum(part, el)[0]
-    fcut = [Draw.make_tf1('', bethe_bloch, bg_min, bg_max, color=draw.get_color(n), style=9, part=part, el=el, w_cut=v * e_min) for v in make_list(w_cut)]
-    f0 = Draw.make_tf1('Bethe-Bloch for {}s in {}'.format(part.Name, el.Name), bethe_bloch, bg_min, bg_max, color=draw.get_color(n), part=part, el=el, dens_corr=False)
-    draw.histo(f0, logx=True, grid=True, w=2, h=1.2, lm=.08, bm=.4)
-    Draw.legend([f, f0] + fcut, ['Bethe Bloch', 'without #delta'] + ['W_{{cut}}={}dE/dx_{{min}}'.format(i) for i in make_list(w_cut)], 'l', x2=.96, w=.2, scale=1.4)
-    y_range = choose(y_range, [1, 10])
-    format_histo(f0, x_tit='#beta#gamma'.format(part.Name), y_tit='Linear Stopping Power [MeV/cm]', center_x=True, center_y=True, y_range=y_range, x_off=1.3, y_off=.8, line_style=7,
-                 line_color=draw.get_color(2, 1), tit_size=.05, lab_size=.05)
-    format_histo(f, line_color=draw.get_color(2, 0))
-    for f in fcut + [f]:
-        f.Draw('same')
-    Draw.x_axis(y_range[0] - diff(y_range)[0] * .23 / .67, bg_min, bg_max, '{} Momentum [MeV/c]'.format(part.Name), array([bg_min, bg_max]) * part.M, center=True, log=True, off=1.3, tit_size=.05,
-                lab_size=.05)
-    return f
-
-
-def draw_drays(p, dx, part: Particle, el: Element, wmin=1e-3, y_range=None):
-    f = Draw.make_tf1('Delta Rays for {}s in {} cm {}'.format(part.Name, dx, el.Name), delta_rays, wmin, w_max(p, part.M), dx=dx, p=p, part=part, el=el)
-    Draw.histo(f, logx=True, logy=True, lm=.13, bm=.22)
-    format_histo(f, x_tit='T_{min} [MeV]', y_tit='N_{#delta}', y_off=1.3, center_y=True, center_x=True, x_off=1.4, y_range=choose(y_range, [1e-5, 10]), tit_size=.05, lab_size=.045)
+def draw_bethe_mpv(p=Pion, el=Dia, t=500, w_cut=2, y_range=None):
+    b0 = BetheBloch(p, el)
+    fs = [BetheBloch(p, el, t, absolute=True), BetheBloch(p, el, t, absolute=True, wcut=w_cut * b0.get_minimum()[0]), LandauVavilovBichsel(p, el, t, True)]
+    fs[1].draw(color=draw.get_color(3, 2), line_style=9, y_range=y_range)
+    fs[0].draw_same(draw.get_color(3, 0))
+    fs[2].draw_same(draw.get_color(5, 1), line_style=6)
+    Draw.legend([f.F for f in fs], ['Bethe Bloch', 'W_{{cut}}={}dE/dx_{{min}}'.format(w_cut), 'Landau-Vavilov-Bichsel'], 'l', x2=.89, w=.33, scale=1.4)
 
 
 def beta_gamma_range():
