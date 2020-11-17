@@ -44,10 +44,12 @@ Si = Element(pt.silicon, e_eh=3.68)
 Dia = Element(pt.carbon, e_eh=13.3, density=3.52, name='Diamond')
 Cu = Element(pt.copper)
 Ar = Element(pt.argon, density=1.662e-3)
+Pb = Element(pt.lead)
 
 Muon = Particle('Muon', constants.physical_constants['muon mass'][0], 2.1969e-6)
 Pion = Particle('Pion', 139.57018, 2.6033e-8)
 Electron = Particle('Electron', constants.electron_mass)
+Positron = Particle('Positron', constants.electron_mass)
 Proton = Particle('Proton', constants.proton_mass)
 
 
@@ -59,8 +61,10 @@ class Eloss(object):
         self.El = el
         self.T = thickness * 1e-4  # um to cm
         self.X = self.T * self.El.Density
+        self.C = 2 * constants.pi * constants.Avogadro * constants.physical_constants['classical electron radius'][0] ** 2 * M_E * 1e4 * self.El.Z / self.El.A  # MeV / cm
         self.F0 = None
         self.F = self.make_f()
+
         self.Draw = Draw(join(Dir, 'main.ini'))
 
     def __call__(self, p, part: Particle = None, el: Element = None):
@@ -110,9 +114,9 @@ class Eloss(object):
         info('Minimum: {:1.2f} Mev/cm at {:1.0f} MeV (betagamma = {:1.2f})'.format(emin, bg * self.P.M, bg))
         return emin, bg * self.P.M
 
-    def get_w_max(self, p):
+    def get_w_max(self, bg):
         """returns maximum energy transfer in a single collsion with a free electron in [MeV]"""
-        return 2 * M_E * beta_gamma(p, self.P.M) ** 2 / (1 + lorentz_factor(calc_speed(p, self.P.M)) / self.P.M + (M_E / self.P.M) ** 2)
+        return 2 * M_E * bg ** 2 / (1 + 2 * bg / beta(bg) * M_E / self.P.M + (M_E / self.P.M) ** 2)
 
     def get_rel_to_mip(self, p):
         v = self(p) / self.get_minimum()[0]
@@ -139,7 +143,7 @@ class LandauVavilovBichsel(Eloss):
         return xi * (log(2 * M_E * bg ** 2 / self.El.IE) + log(xi / self.El.IE) + .2 - calc_speed(bg * self.P.M, self.P.M) ** 2 - self.density_correction(bg)) * lin_fac
 
     def get_xi(self, bg):
-        return .5 * K * self.El.Z / self.El.A * self.X / calc_speed(bg * self.P.M, self.P.M) ** 2
+        return self.C * self.X / calc_speed(bg * self.P.M, self.P.M) ** 2
 
 
 class BetheBloch(Eloss):
@@ -166,18 +170,28 @@ class BetheBloch(Eloss):
         return f
 
     def f(self, bg):
-        p = self.P.M * bg
-        b0 = calc_speed(p, self.P.M)
+        b = beta(bg)
         d = self.density_correction(bg) if self.DensityCorr else 0
-        w_max = self.get_w_max(p)
+        w_max = self.get_w_max(bg)
         w_cut = w_max if self.WCut is None else min(self.WCut, w_max)
         lin_fac = 1 if self.Linear else self.T * 1000
-        return K * self.El.Density * self.El.Z / self.El.A / b0 ** 2 * (.5 * log(2 * M_E * bg ** 2 * w_cut / self.El.IE ** 2) - b0 ** 2 / 2 * (1 + w_cut / w_max) - d / 2) * lin_fac
+        return self.C * self.El.Density / b ** 2 * (log(2 * M_E * bg ** 2 * w_cut / self.El.IE ** 2) - 2 * b * b * (1 + w_cut / w_max) - d + self.get_correction(bg)) * lin_fac
+
+    def get_correction(self, bg):
+        b, g = beta(bg), gamma(bg)
+        if self.P.Name == 'Electron':
+            return 1 + b * b - (2 * g - 1) / (g * g) * log(2) + ((g - 1) / g) ** 2 / 8
+        elif self.P.Name == 'Positron':
+            return log(2) + 2 * b * b - b * b / 12 * (23 + 14 / (g + 1) + 10 / (g + 1) ** 2 + 4 / (g + 1) ** 3)
+        return 0
+
+    def get_w_max(self, bg):
+        return .5 * M_E * (gamma(bg) - 1) if self.P.Name == 'Electron' else M_E * (gamma(bg) - 1) if self.P.Name == 'Positron' else super(BetheBloch, self).get_w_max(bg)
 
     def delta_rays(self, wmin, p):
         b0 = calc_speed(p, self.P.M)
-        wmax = self.get_w_max(p)
-        return .5 * K * self.El.Z / self.El.A / b0 ** 2 * ((1 / wmin - 1 / wmax) - b0 ** 2 / wmax * log(wmax / wmin)) * self.X
+        wmax = self.get_w_max(beta_gamma(p, self.P.M))
+        return self.C / b0 ** 2 * ((1 / wmin - 1 / wmax) - b0 ** 2 / wmax * log(wmax / wmin)) * self.X
 
     def draw_delta_rays(self, p, wmin=1e-3, y_range=None):
         f = Draw.make_tf1('Delta Rays for {}s in {:1.0f} #mum {}'.format(self.P.Name, self.T * 1e4, self.El.Name), self.delta_rays, wmin, self.get_w_max(p), p=p)
@@ -186,8 +200,10 @@ class BetheBloch(Eloss):
 
 
 a = LandauVavilovBichsel(Muon, Si)
-b = BetheBloch(Pion, Dia)
+bb = BetheBloch(Pion, Dia)
 draw = Draw(join(Dir, 'main.ini'))
+d = BetheBloch(Positron, Pb)
+e = BetheBloch(Electron, Pb)
 
 
 def draw_dens_correction(p, el, y_range=None):
