@@ -59,12 +59,12 @@ class Eloss(object):
     def density_correction(self, bg):
         x = log10(bg)
         el = self.El
-        if x >= el.X1:
+        if x >= el.x1:
             return 2 * log(10) * x - el.C
-        elif el.X0 <= x < el.X1:
-            return 2 * log(10) * x - el.C + el.A0 * (el.X1 - x) ** el.K
+        elif el.x0 <= x < el.x1:
+            return 2 * log(10) * x - el.C + el.a * (el.x1 - x) ** el.k
         else:
-            return el.D0 * 10 ** (2 * (x - el.X0))
+            return el.D0 * 10 ** (2 * (x - el.x0))
 
     def get_minimum(self, p=None, el=None):
         self.reload(p, el)
@@ -78,6 +78,9 @@ class Eloss(object):
     def get_w_max(self, bg):
         """returns maximum energy transfer in a single collsion with a free electron in [MeV]"""
         return 2 * M_E * bg ** 2 / (1 + 2 * bg / beta(bg) * M_E / self.P.M + (M_E / self.P.M) ** 2)
+
+    def get_lin_fac(self):
+        return 1 if self.Mass else self.El.Density if self.Linear else self.X * 1000
 
     def get_rel_to_mip(self, p):
         v = self(p) / self.get_minimum()[0]
@@ -135,8 +138,7 @@ class BetheBloch(Eloss):
         d = self.density_correction(bg) if self.DensityCorr else 0
         w_max = self.get_w_max(bg)
         w_cut = w_max if self.WCut is None else min(self.WCut, w_max)
-        lin_fac = 1 if self.Mass else self.El.Density if self.Linear else self.X * 1000
-        return lin_fac * self.C / (b * b) * (log(2 * M_E * bg * bg * w_cut / (self.El.IE * self.El.IE)) - b * b * (1 + w_cut / w_max) - d + self.get_correction(bg))
+        return self.get_lin_fac() * self.C / (b * b) * (log(2 * M_E * bg * bg * w_cut / (self.El.IE * self.El.IE)) - b * b * (1 + w_cut / w_max) - d + self.get_correction(bg))
 
     def get_correction(self, bg):
         b, g = beta(bg), gamma(bg)
@@ -162,8 +164,28 @@ class BetheBloch(Eloss):
 
 class Bremsstrahlung(Eloss):
 
-    def __init__(self, part: Particle, el: Element, t=500, absolute=False):
-        super().__init__(part, el, t, absolute)
+    def __init__(self, part: Particle, el: Element, t=500, absolute=False, mass=False):
+        super().__init__(part, el, t, absolute, mass)
+        self.N = constants.physical_constants['Avogadro constant'][0] * self.El.Density / self.El.A
+        self.F0 = self.N * 1e4 * self.El.Z ** 2 * constants.physical_constants['classical electron radius'][0] ** 2 * constants.alpha / self.El.Density * self.get_lin_fac()
+
+    def get_minimum(self, p=None, el=None):
+        return 1, 1
+
+    def make_f(self):
+        f = Draw.make_tf1('Bremsstrahlung {}'.format(self.get_str()), self.f, .1, 1e6)
+        f.SetNpx(1000)
+        return f
+
+    def low(self, e):
+        return self.F0 * e * (4 * log(2 * e / self.P.M) - 4/3)
+
+    def high(self, e):
+        return self.F0 * e * (4 * log(183 / self.El.Z ** (1/3)) + 2/9)
+
+    def get_elwert(self, p):
+        pass
 
     def f(self, bg):
-        return log(bg)
+        return self.get_lin_fac() / self.El.X0 * energy(bg * self.P.M, self.P.M)
+
