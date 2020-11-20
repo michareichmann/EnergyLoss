@@ -1,4 +1,4 @@
-from draw import choose, sqrt, Draw, join, dirname, realpath, print_table, beta_gamma
+from draw import choose, sqrt, Draw, join, dirname, realpath, print_table, beta_gamma, M_E, e2p
 from numpy import genfromtxt, array
 import periodictable as pt
 from src.particle import Muon
@@ -9,7 +9,8 @@ class Element(object):
         self.Name = choose(name, el.name.title())
         self.Z = el.number
         self.A = el.mass
-        self.DataFile = join(dirname(dirname(realpath(__file__))), 'data', '{}.txt'.format(self.Name))
+        self.DataFile = join(dirname(dirname(realpath(__file__))), 'data', 'muons', '{}.txt'.format(self.Name))
+        self.EDataFile = join(dirname(dirname(realpath(__file__))), 'data', 'electrons', '{}.txt'.format(self.Name))
         self.X0 = rad_length
         self.a, self.k, self.x0, self.x1, self.IE, self.C, self.D0 = genfromtxt(self.DataFile, skip_header=4, max_rows=1)
         self.IE *= 1e-6  # convert to MeV
@@ -24,6 +25,10 @@ class Element(object):
     def get_data(self, col, linear, mass, t):
         x, y = genfromtxt(self.DataFile, usecols=[0, col], skip_header=10).T
         return array([beta_gamma(x, Muon.M), y * (1 if mass else self.Density if linear else t * self.Density)])
+
+    def get_e_data(self, col, linear, mass, t):
+        x, y = genfromtxt(self.EDataFile, usecols=[0, col], skip_header=8).T
+        return array([beta_gamma(e2p(x, M_E), M_E), y * (1 if mass else self.Density if linear else t * self.Density)])
 
     def get_ionisation(self, linear=True, mass=False, t=500):
         return self.get_data(2, linear, mass, t)
@@ -49,6 +54,11 @@ class Element(object):
         d = Draw()
         x, y = self.get_brems(mass=True)
         d.graph(x[:n], y[:n], logx=True)
+
+    def draw_brems(self, linear=True, mass=False, t=500, color=1, style=1):
+        g = Draw.make_tgrapherrors(*self.get_e_data(2, linear, mass, t), markersize=.7, color=color, line_style=style, lw=2)
+        g.Draw('l')
+        return g
 
 
 Si = Element(pt.silicon, 21.82, e_eh=3.68)
