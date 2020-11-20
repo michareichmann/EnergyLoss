@@ -27,6 +27,11 @@ class Eloss(object):
         self.reload(part, el)
         return self.F(p / self.P.M)
 
+    def __add__(self, other):
+        tmp = deepcopy(self)
+        tmp.F = Draw.make_tf1('sum', lambda x: self.f(x) + other.f(x), .1, 1e6)
+        return tmp
+
     def reload(self, p=None, el=None):
         if p is not None or el is not None:
             self.P = choose(p, self.P)
@@ -37,24 +42,27 @@ class Eloss(object):
         return TF1()
 
     def f(self, bg):
-        pass
+        return 0
 
     def get_y_tit(self):
         return 'Mass Stopping Power [MeV cm^{2}/g]' if self.Mass else 'Linear Stopping Power [MeV/cm]' if self.Linear else 'dE/dx in {:1.0f} #mum {} [keV]'.format(self.T * 1e4, self.El.Name)
 
-    def draw(self, color=2, line_style=1, xmin=.1, xmax=1e3, y_range=None):
-        y_range = array(choose(y_range, ax_range(self.get_emin(), self.f(.2), .1, 0)))
-        self.Draw(self.F, logx=True, grid=True, w=2, h=1.2, lm=.1, bm=.4, rm=None if self.Linear else .1)
+    def draw(self, color=2, line_style=1, xmin=.1, xmax=1e3, y_range=None, logy=False):
+        y_range = array(choose(y_range, ax_range(self.get_emin(), self.f(.2), .05, 0)))
+        self.Draw(self.F, logx=True, grid=True, w=2, h=1.2, lm=.1, bm=.4, rm=None if self.Linear else .1, logy=logy)
         format_histo(self.F, line_style=line_style, color=color, x_range=[xmin, xmax], y_range=y_range, x_tit='#beta#gamma', y_tit=self.get_y_tit(),
                      center_x=True, center_y=True, x_off=1.3, y_off=1, tit_size=.05, lab_size=.05)
-        Draw.x_axis(y_range[0] - diff(y_range)[0] * .23 / .67, xmin, xmax, '{} Momentum [MeV/c]'.format(self.P.Name), array([xmin, xmax]) * self.P.M, center=True, log=True, off=1.3,
-                    tit_size=.05, lab_size=.05)
+        tit = '{} {} [MeV{}]'.format(self.P.Name, *['Energy', ''] if 'tron' in self.P.Name else ['Momentum', '/c'])
+        x_vals = p2e(array([xmin, xmax]) * self.P.M, self.P.M) if 'tron' in self.P.Name else array([xmin, xmax]) * self.P.M
+        Draw.x_axis(y_range[0] - diff(y_range)[0] * .2 / .64, xmin, xmax, tit, x_vals, center=True, log=True, off=1.3, tit_size=.05, lab_size=.05)
         if not self.Linear:
             Draw.y_axis(xmax, *y_range, 'Induced eh-pairs #times 1000', y_range / self.El.EEH, center=True, off=1, tit_size=.05, lab_size=.05)
+        return self
 
     def draw_same(self, color=4, line_style=1):
         format_histo(self.F, line_color=color, line_style=line_style)
         self.F.Draw('same')
+        return self
 
     def density_correction(self, bg):
         x = log10(bg)
@@ -129,7 +137,7 @@ class BetheBloch(Eloss):
         return ufloat(fit.GetParameter(2), fit.GetParError(2))
 
     def make_f(self):
-        f = Draw.make_tf1('Bethe Bloch {}'.format(self.get_str()), self.f, .1, 1e6)
+        f = Draw.make_tf1('bethe{}'.format(self.P.Name[:2]), self.f, .1, 1e6, title='Bethe Bloch {}'.format(self.get_str()))
         f.SetNpx(1000)
         return f
 
@@ -173,7 +181,7 @@ class Bremsstrahlung(Eloss):
         return 1, 1
 
     def make_f(self):
-        f = Draw.make_tf1('Bremsstrahlung {}'.format(self.get_str()), self.f, .1, 1e6)
+        f = Draw.make_tf1('brems', self.f, .1, 1e6, title='Bremsstrahlung {}'.format(self.get_str()))
         f.SetNpx(1000)
         return f
 
@@ -183,9 +191,9 @@ class Bremsstrahlung(Eloss):
     def high(self, e):
         return self.F0 * e * (4 * log(183 / self.El.Z ** (1/3)) + 2/9)
 
-    def get_elwert(self, p):
+    def draw_exact(self):
         pass
 
     def f(self, bg):
-        return self.get_lin_fac() / self.El.X0 * energy(bg * self.P.M, self.P.M)
+        return self.get_lin_fac() / self.El.X0 * p2e(bg * self.P.M, self.P.M)
 
