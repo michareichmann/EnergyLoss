@@ -36,5 +36,14 @@ def draw_bethe_mpv(p=Pion, el=Dia, t=500, w_cut=2, y_range=None):
     Draw.legend([f.F for f in fs], ['Bethe Bloch', 'W_{{cut}}={}dE/dx_{{min}}'.format(w_cut), 'Landau-Vavilov-Bichsel'], 'l', x2=.89, w=.33, scale=1.4)
 
 
+def draw_ep(el=Dia, t=500, absolute=False, mass=False, y_range=None, xmin=.1, xmax=1e3):
+    bethe_el = BetheBloch(Electron, el, t, absolute=absolute, mass=mass).draw(y_range=y_range, xmin=xmin, xmax=xmax)
+    bethe_pos = BetheBloch(Positron, el, t, absolute=absolute, mass=mass).draw_same(4, 2)
+    brems = Bremsstrahlung(Electron, el, t, absolute, mass).draw_same(3)
+    total = (bethe_el + brems).draw_same()
+    data = Cu.draw_brems(not absolute, mass, t=t / 10)
+    Draw.legend([bethe_el.F, bethe_pos.F, total.F, brems.F, data], ['Ionisation e^{-}', 'Ionisation e^{+}', 'total', 'Bremsstrahlung appr.', 'Bremstrahlung exact'], 'l')
+
+
 def beta_gamma_range():
     info('Beta Gamma Range: {:1.1f} ~ {:1.1f}'.format(beta_gamma(260, M_PI), beta_gamma(1.2e5, M_PI)))
