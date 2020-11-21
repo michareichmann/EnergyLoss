@@ -58,7 +58,10 @@ class Element(object):
     def draw_brems(self, linear=True, mass=False, t=500, color=1, style=1):
         g = Draw.make_tgrapherrors(*self.get_e_data(2, linear, mass, t), markersize=.7, color=color, line_style=style, lw=2)
         g.Draw('l')
-        return g
+        fit = Draw.make_f('exact', 'pol1', 1, 1e3)
+        g.Fit(fit, 'qs0', '', 50, 1e3)
+        p1 = fit(50) / 50  # force the function to go to zero below 100 MeV
+        return Draw.make_tf1('exact', lambda x: x * p1 if x < 50 else fit(x), 1, 1e3, color=color, style=style, w=2)
 
 
 Si = Element(pt.silicon, 21.82, e_eh=3.68)
