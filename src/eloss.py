@@ -1,4 +1,4 @@
-from draw import *
+from helpers.draw import *
 from numpy import log, diff
 from typing import Any
 from src.element import *
