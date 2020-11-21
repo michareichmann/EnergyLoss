@@ -29,7 +29,7 @@ class Eloss(object):
 
     def __add__(self, other):
         tmp = deepcopy(self)
-        tmp.F = Draw.make_tf1('sum', lambda x: self.f(x) + other.f(x), .1, 1e6)
+        tmp.F = Draw.make_tf1('sum', lambda x: self.f(x) + (other.f(x) if isinstance(other, Eloss) else other(x)), .1, 1e6)
         return tmp
 
     def reload(self, p=None, el=None):
