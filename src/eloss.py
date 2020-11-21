@@ -47,16 +47,18 @@ class Eloss(object):
     def get_y_tit(self):
         return 'Mass Stopping Power [MeV cm^{2}/g]' if self.Mass else 'Linear Stopping Power [MeV/cm]' if self.Linear else 'dE/dx in {:1.0f} #mum {} [keV]'.format(self.T * 1e4, self.El.Name)
 
-    def draw(self, color=2, line_style=1, xmin=.1, xmax=1e3, y_range=None, logy=False):
+    def draw(self, color=2, line_style=1, xmin=.1, xmax=1e3, y_range=None, logy=False, draw_ekin=False):
         y_range = array(choose(y_range, ax_range(self.get_emin(), self.f(.2), .05, 0)))
         self.Draw(self.F, logx=True, grid=True, w=2, h=1.2, lm=.1, bm=.4, rm=None if self.Linear else .1, logy=logy)
         format_histo(self.F, line_style=line_style, color=color, x_range=[xmin, xmax], y_range=y_range, x_tit='#beta#gamma', y_tit=self.get_y_tit(),
                      center_x=True, center_y=True, x_off=1.3, y_off=1, tit_size=.05, lab_size=.05)
-        tit = '{} {} [MeV{}]'.format(self.P.Name, *['Energy', ''] if 'tron' in self.P.Name else ['Momentum', '/c'])
-        x_vals = p2e(array([xmin, xmax]) * self.P.M, self.P.M) if 'tron' in self.P.Name else array([xmin, xmax]) * self.P.M
-        Draw.x_axis(y_range[0] - diff(y_range)[0] * .2 / .64, xmin, xmax, tit, x_vals, center=True, log=True, off=1.3, tit_size=.05, lab_size=.05)
+        tit = '{} {} [MeV{}]'.format(self.P.Name, *['Kinetic Energy', ''] if draw_ekin else ['Momentum', '/c'])
+        x_vals = p2e(array([xmin, xmax]) * self.P.M, self.P.M) if draw_ekin else array([xmin, xmax]) * self.P.M
+        self.F.SetMinimum(y_range[0])
+        y_pos = y_range[0] * (y_range[0] / y_range[1]) ** (.2 / .64) if logy else y_range[0] - diff(y_range)[0] * .2 / .64
+        Draw.x_axis(y_pos, xmin, xmax, tit, x_vals, center=True, log=True, off=1.3, tit_size=.05, lab_size=.05)
         if not self.Linear:
-            Draw.y_axis(xmax, *y_range, 'Induced eh-pairs #times 1000', y_range / self.El.EEH, center=True, off=1, tit_size=.05, lab_size=.05)
+            Draw.y_axis(xmax, *y_range, 'Induced eh-pairs #times 1000', y_range / self.El.EEH, center=True, off=1, tit_size=.05, lab_size=.05, log=logy)
         return self
 
     def draw_same(self, color=4, line_style=1):
@@ -196,4 +198,3 @@ class Bremsstrahlung(Eloss):
 
     def f(self, bg):
         return self.get_lin_fac() / self.El.X0 * p2e(bg * self.P.M, self.P.M)
-
