@@ -6,3 +6,12 @@
  - Muon, Pion, Electron, Positron, Proton
 ### Materials
  - Diamond, Silicon, Copper, Lead, Argon (gas)
+## Requirements
+ - ROOT6
+ - Python3.x
+ - Python packages:
+    - termcolor
+    - scipy
+    - uncertainties
+    - progressbar
+ 
