@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from src.eloss import *
+from src.straggling import *
 
 draw = Draw(join(Eloss.Dir, 'main.ini'))
 

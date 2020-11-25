@@ -1,4 +1,4 @@
-from draw import choose, sqrt, Draw, join, dirname, realpath, print_table, beta_gamma, M_E, e2p
+from helpers.draw import choose, sqrt, Draw, join, dirname, realpath, print_table, beta_gamma, M_E, e2p
 from numpy import genfromtxt, array
 import periodictable as pt
 from src.particle import Muon
