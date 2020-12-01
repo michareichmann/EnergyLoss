@@ -64,3 +64,7 @@ def print_energies(p, el: Element, t=500, table=False):
         info('Energy loss of {} MeV {}s in {} μm {}: {:1.0f} keV ({:1.0f} eh-pairs)'.format(p, part.Name, t, el.Name, e, round(e * 1000 / el.EEH, -2)))
     if table:
         print(make_latex_table_row(concatenate(array(values).T)))
+
+
+if __name__ == '__main__':
+    z = CrossSection(Si)
