@@ -4,7 +4,7 @@
 # --------------------------------------------------------
 import ROOT
 ROOT.PyConfig.IgnoreCommandLineOptions = True
-from ROOT import gROOT, TF1, TFile, TMath
+from ROOT import gROOT, TF1, TFile, TMath, TSpectrum
 
 import pickle
 from collections import OrderedDict
@@ -14,10 +14,11 @@ from multiprocessing import Pool, cpu_count
 from threading import Thread
 from time import time, sleep
 
-from numpy import sqrt, array, average, mean, arange, log10, concatenate, where, any, count_nonzero, full, ndarray, exp, sin, cos, arctan, zeros, dot, roll, arctan2, frombuffer, round
+from numpy import sqrt, array, average, mean, arange, log10, concatenate, where, any, count_nonzero, full, ndarray, exp, sin, cos, arctan, zeros, dot, roll, arctan2, frombuffer, split, cumsum
+from numpy import histogram, log2, diff, isfinite
 from os import makedirs, _exit, remove
 from os import path as pth
-from os.path import dirname, realpath
+from os.path import dirname, realpath, join
 from termcolor import colored
 from uncertainties import ufloat
 from uncertainties.core import Variable, AffineScalarFunc
@@ -33,6 +34,7 @@ from json import load, loads
 OFF = False
 ON = True
 DEGREE_SIGN = u'\N{DEGREE SIGN}'
+COUNT = 0
 
 M_PI = 139.57018  # MeV/c^2
 M_MU = constants.physical_constants['muon mass'][0] / constants.e * constants.c**2 / 1e6
@@ -71,6 +73,12 @@ def info(msg, endl=True, blank_lines=0, prnt=True):
 def add_to_info(t, msg='Done', prnt=True):
     if prnt:
         print('{m} ({t:2.2f} s)'.format(m=msg, t=time() - t))
+
+
+def print_check():
+    global COUNT
+    print('======={}========'.format(COUNT))
+    COUNT += 1
 
 
 def set_root_warnings(status):
@@ -132,10 +140,6 @@ def round_up_to(num, val=1):
     return int(num) // val * val + val
 
 
-def roundn(x, base=5):
-    return (base * round(x / base)).astype('i')
-
-
 def interpolate_two_points(x1, y1, x2, y2, name=''):
     # f = p1*x + p0
     p1 = (y1 - y2) / (x1 - x2)
@@ -151,6 +155,12 @@ def interpolate_x(x1, x2, y1, y2, y):
     p1 = get_p1(x1, x2, y1, y2)
     p0 = get_p0(x1, y1, p1)
     return (y - p0) / p1 if p1 else 0
+
+
+def interpolate_y(x1, x2, y1, y2, x):
+    p1 = get_p1(x1, x2, y1, y2)
+    p0 = get_p0(x1, y1, p1)
+    return p1 * x + p0
 
 
 def get_p1(x1, x2, y1, y2):
@@ -268,9 +278,12 @@ def mean_sigma(values, weights=None, err=True):
     return (m, s) if err else (m.n, s.n)
 
 
+def binned_stats(x, values, f, bins):
+    return array([f(v) for v in split(values, cumsum(histogram(x, bins)[0].astype('i'))[:-1])])
+
+
 def make_latex_table_row(row, hline=False):
-    row = [str(word) for word in row]
-    return '{}\\\\{}\n'.format(' & '.join(row), '\\hline' if hline else '')
+    return '{0}\\\\{1}\n'.format('\t& '.join(row), '\\hline' if hline else '')
 
 
 def make_latex_table(header, cols, endline=False):
@@ -296,7 +309,7 @@ def make_dia_str(dia):
 
 
 def make_list(value):
-    return array([] if value is None else [value]).flatten()
+    return array([value]).flatten()
 
 
 def file_exists(path, warn=False):
@@ -334,6 +347,11 @@ def print_elapsed_time(start, what='This', show=True, color=None):
     string = 'Elapsed time for {w}: {t}'.format(t=get_elapsed_time(start), w=what)
     print_banner(string, color=color) if show else do_nothing()
     return string
+
+
+def make_byte_string(v):
+    n = int(log2(v) // 10) if v else 0
+    return '{:1.1f} {}'.format(v / 2 ** (10 * n), ['B', 'kB', 'MB', 'GB'][n])
 
 
 def get_elapsed_time(start):
@@ -411,7 +429,7 @@ def find_mpv_fwhm(histo, bins=15):
     max_bin = histo.GetMaximumBin()
     fit = TF1('fit', 'gaus', 0, 500)
     histo.Fit('fit', 'qs0', '', histo.GetBinCenter(max_bin - bins), histo.GetBinCenter(max_bin + bins))
-    mpv = make_ufloat(fit.GetParameter(1), fit.GetparError(1))
+    mpv = ufloat(fit.GetParameter(1), fit.GetParError(1))
     fwhm = histo.FindLastBinAbove(fit(mpv.n) / 2) - histo.FindFirstBinAbove(fit(mpv.n) / 2)
     return mpv, fwhm, mpv / fwhm
 
@@ -426,7 +444,7 @@ def get_fwhm(h, fit_range=.8, ret_edges=False):
     half_max0 = h.GetMaximum() * fit_range
     # fit the top with a gaussian to get better maxvalue
     fit = FitRes(h.Fit('gaus', 'qs0', '', *[h.GetBinCenter(i) for i in [h.FindFirstBinAbove(half_max0), h.FindLastBinAbove(half_max0)]]))
-    half_max = make_ufloat(fit, par=0) * .5
+    half_max = fit2u(fit, par=0) * .5
     blow, bhigh, w = h.FindFirstBinAbove(half_max.n), h.FindLastBinAbove(half_max.n), h.GetBinWidth(1)
     low = interpolate_x(h.GetBinCenter(blow - 1), h.GetBinCenter(blow), h.GetBinContent(blow - 1), h.GetBinContent(blow), half_max)
     high = interpolate_x(h.GetBinCenter(bhigh), h.GetBinCenter(bhigh + 1), h.GetBinContent(bhigh), h.GetBinContent(bhigh + 1), half_max)
@@ -471,15 +489,13 @@ def print_table(rows, header=None, footer=None, prnt=True):
     col_width = [len(max(t[:, i], key=len)) for i in range(t.shape[1])]
     total_width = sum(col_width) + len(col_width) * 3 + 1
     hline = '{}'.format('~' * total_width)
-    lines = []
-    for i, row in enumerate(t):
-        if i in [0] + choose([1], [], header) + choose([t.shape[0] - 1], [], footer):
-            lines.append(hline)
-        lines.append('| {r} |'.format(r=' | '.join(word.ljust(n) for word, n in zip(row, col_width))))
-    lines.append('{}\n'.format(hline))
     if prnt:
-        print('\n'.join(lines))
-    return '\n'.join(lines)
+        for i, row in enumerate(t):
+            if i in [0] + choose([1], [], header) + choose([t.shape[0] - 1], [], footer):
+                print(hline)
+            print('| {r} |'.format(r=' | '.join(word.ljust(n) for word, n in zip(row, col_width))))
+        print('{}\n'.format(hline))
+    return rows
 
 
 def get_base_dir():
@@ -510,6 +526,13 @@ def fit_poissoni(h, p0=5000, p1=1, name='f_poiss', show=True):
     h.Fit(fit, 'q{0}'.format('' if show else 0))
     fit.Draw('same')
     return fit
+
+
+def find_maxima(h, n=3, sigma=2, sort_x=False):
+    s = TSpectrum(n)
+    n = s.Search(h, sigma)  # return how many maxima were found
+    v = array([frombuffer(getattr(s, 'GetPosition{}'.format(i))(), dtype='d', count=n) for i in ['X', 'Y']]).T
+    return v[v[:, 0].argsort()] if sort_x else v
 
 
 def int_to_roman(integer):
@@ -599,18 +622,26 @@ def log_bins(n_bins, min_val, max_val):
     return [n_bins, array([pow(10, log10(min_val) + i * width) for i in range(n_bins + 1)])]
 
 
-def make_ufloat(tup, par=0):
-    if is_ufloat(tup):
-        return tup
-    if isinstance(tup, FitRes):
-        return ufloat(tup.Parameter(par), tup.ParError(par))
-    if type(tup) in [tuple, list, ndarray]:
-        return ufloat(*tup) if not is_ufloat(tup[0]) else ufloat(tup[0].n, tup[1].n)
-    return ufloat(tup, 0)
+def fit2u(fit, par):
+    return ufloat(fit.Parameter(par), fit.ParError(par))
+
+
+def make_ufloat(n, s=0):
+    if is_iter(n):
+        return array([ufloat(*v) for v in array([n, s]).T])
+    return n if is_ufloat(n) else ufloat(n, s)
 
 
 def is_ufloat(value):
     return type(value) in [Variable, AffineScalarFunc]
+
+
+def is_iter(v):
+    try:
+        iter(v)
+        return True
+    except TypeError:
+        return False
 
 
 def find_graph_margins(graphs):
@@ -676,10 +707,9 @@ def get_time_vec(sel, run=None):
     if tree is None:
         return
     tree.SetEstimate(-1)
-    entries = tree.Draw('time', '', 'goff')
-    time_vec = get_root_vec(tree, entries)
-    fill_empty_time_entries(time_vec)
-    time_vec = correct_time(time_vec, run)
+    tvec = get_tree_vec(tree, 'time')
+    fill_empty_time_entries(tvec)
+    time_vec = correct_time(tvec, run)
     return time_vec
 
 
@@ -726,30 +756,32 @@ def del_rootobj(obj):
         pass
 
 
-def get_root_vec(tree, n=0, ind=0, dtype=None, var=None, cut='', nentries=None, firstentry=0):
-    if var is not None:
-        strings = make_list(var)
-        n = tree.Draw(':'.join(strings), cut, 'goff', choose(nentries, tree.kMaxEntries), firstentry)
-        dtypes = dtype if type(dtype) in [list, ndarray] else full(strings.size, dtype)
-        vals = [get_root_vec(tree, n, i, dtypes[i]) for i in range(strings.size)]
-        return vals[0] if len(vals) == 1 else vals
-    buffer = tree.GetVal(ind)
-    return frombuffer(buffer, dtype=buffer.typecode, count=n).astype(dtype)
-
-
-def get_root_vecs(tree, n, n_ind, dtype=None):
-    return [get_root_vec(tree, n, i, dtype) for i in range(n_ind)]
+def get_tree_vec(tree, var, cut='', dtype=None, nentries=None, firstentry=0):
+    strings = make_list(var)
+    n = tree.Draw(':'.join(strings), cut, 'goff', choose(nentries, tree.kMaxEntries), firstentry)
+    dtypes = dtype if type(dtype) in [list, ndarray] else full(strings.size, dtype)
+    vals = [get_buf(tree.GetVal(i), n, dtypes[i]) for i in range(strings.size)]
+    return vals[0] if len(vals) == 1 else vals
 
 
 def get_arg(arg, default):
     return default if arg is None else arg
 
 
+def get_buf(buf, n, dtype=None):
+    return frombuffer(buf, dtype=buf.typecode, count=n).astype(dtype)
+
+
 def calc_eff(k=0, n=0, values=None):
     values = array(values) if values is not None else None
+    if n == 0 and not values.size:
+        return zeros(3)
     k = float(k if values is None else count_nonzero(values))
     n = float(n if values is None else values.size)
-    return make_ufloat((100 * (k + 1) / (n + 2), 100 * sqrt(((k + 1) / (n + 2) * (k + 2) / (n + 3) - ((k + 1) ** 2) / ((n + 2) ** 2)))))
+    m = (k + 1) / (n + 2)
+    mode = k / n
+    s = sqrt(((k + 1) / (n + 2) * (k + 2) / (n + 3) - ((k + 1) ** 2) / ((n + 2) ** 2)))
+    return array([mode, max(s + (mode - m), 0), max(s - (mode - m), 0)]) * 100
 
 
 def init_argparser(run=None, tc=None, dut=False, tree=False, has_verbose=False, has_collection=False, return_parser=False):
@@ -787,6 +819,15 @@ def u_to_str(v, prec=2):
 
 def poly_area(x, y):
     return .5 * abs(dot(x, roll(y, 1)) - dot(y, roll(x, 1)))
+
+
+def discrete_int(x, y):
+    """ assume linear interpolation between the points. """
+    cut = x.argsort()
+    x, y = x[cut], y[cut]
+    dx, dy = diff(x), diff(y)
+    i = dx * y[:-1] + .5 * dx * dy
+    return sum(i[isfinite(i)])
 
 
 class FitRes(object):
@@ -847,6 +888,13 @@ class PBar(object):
         self.PBar.finish()
 
 
+def load_main_config(config='main', ext='ini'):
+    file_name = join(get_base_dir(), 'config', '{}.{}'.format(config.split('.')[0], ext.strip('.')))
+    if not file_exists(file_name):
+        critical('{} does not exist. Please copy it from the main.default and adapt it to your purpose!'.format(file_name))
+    return Config(file_name)
+
+
 class Config(ConfigParser):
 
     def __init__(self, file_name, **kwargs):
@@ -866,6 +914,13 @@ class Config(ConfigParser):
 
     def get_list(self, section, option, default=None):
         return self.get_value(section, option, list, choose(default, []))
+
+    def show(self):
+        for key, section in self.items():
+            print(colored('[{}]'.format(key), 'yellow'))
+            for option in section:
+                print('{} = {}'.format(option, self.get(key, option)))
+            print()
 
 
 def gauss(x, scale, mean_, sigma, off=0):
@@ -916,7 +971,6 @@ def lorentz_factor(v):
 
 def momentum(m, v):
     return m * v * lorentz_factor(v)
-
 
 def decay_ratio(p, m, d, tau):
     return exp(-d * m / (tau * 1e-9 * p * constants.c))
