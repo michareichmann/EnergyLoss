@@ -148,7 +148,7 @@ class Draw(object):
         return Draw.add(c)
 
     @staticmethod
-    def axis(x1, x2, y1, y2, title, limits=None, name='ax', col=1, width=1, off=.15, tit_size=.035, lab_size=0.035, tick_size=0.03, line=False, opt='+SU', l_off=.01, log=False):
+    def axis(x1, x2, y1, y2, title, limits=None, name='ax', col=1, width=1, off=.15, tit_size=.035, lab_size=0.035, tick_size=0.03, line=False, opt='+SU', l_off=.01, log=False, center=None):
         limits = ([y1, y2] if x1 == x2 else [x1, x2]) if limits is None else limits
         a = TGaxis(x1, y1, x2, y2, limits[0], limits[1], 510, opt + ('G' if log else ''))
         a.SetName(name)
@@ -162,6 +162,7 @@ class Draw(object):
         a.SetLabelColor(col)
         a.SetLabelFont(Draw.Font)
         a.SetTitleFont(Draw.Font)
+        do(a.CenterTitle, center)
         a.SetTickSize(tick_size if not line else 0)
         a.SetTickLength(tick_size if not line else 0)
         a.SetNdivisions(0) if line else do_nothing()
@@ -170,12 +171,12 @@ class Draw(object):
         return Draw.add(a)
 
     @staticmethod
-    def y_axis(x, ymin, ymax, tit, limits=None, name='ax', col=1, off=1, w=1, opt='+L', tit_size=.035, lab_size=0.035, tick_size=0.03, l_off=.01, line=False, log=False):
-        return Draw.axis(x, x, ymin, ymax, tit, limits, name, col, w, off, tit_size, lab_size, tick_size, line, opt, l_off, log)
+    def y_axis(x, ymin, ymax, tit, limits=None, name='ax', col=1, off=1, w=1, opt='+L', tit_size=.035, lab_size=0.035, tick_size=0.03, l_off=.01, line=False, log=False, center=None):
+        return Draw.axis(x, x, ymin, ymax, tit, limits, name, col, w, off, tit_size, lab_size, tick_size, line, opt, l_off, log, center)
 
     @staticmethod
-    def x_axis(y, xmin, xmax, tit, limits=None, name='ax', col=1, off=1, w=1, opt='+L', tit_size=.035, lab_size=0.035, tick_size=0.03, l_off=.01, line=False, log=False):
-        return Draw.axis(xmin, xmax, y, y, tit, limits, name, col, w, off, tit_size, lab_size, tick_size, line, opt, l_off, log)
+    def x_axis(y, xmin, xmax, tit, limits=None, name='ax', col=1, off=1, w=1, opt='+L', tit_size=.035, lab_size=0.035, tick_size=0.03, l_off=.01, line=False, log=False, center=None):
+        return Draw.axis(xmin, xmax, y, y, tit, limits, name, col, w, off, tit_size, lab_size, tick_size, line, opt, l_off, log, center)
 
     @staticmethod
     def line(x1, x2, y1, y2, color=1, width=1, style=1):
@@ -465,9 +466,10 @@ class Draw(object):
         return Draw.add(h)
 
     @staticmethod
-    def make_f(name, function, xmin=0, xmax=1, pars=None, *args, **kwargs):
+    def make_f(name, function, xmin=0, xmax=1, pars=None, npx=None, *args, **kwargs):
         f = TF1(name, function, xmin, xmax)
         f.SetParameters(*pars) if pars is not None else do_nothing()
+        do(f.SetNpx, npx)
         format_histo(f, *args, **kwargs)
         return f
 
