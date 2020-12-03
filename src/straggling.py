@@ -1,6 +1,8 @@
-from numpy import sqrt, pi, exp, array, log
-from helpers.draw import Draw, format_histo, dirname, realpath, join, constants, M_E, beta, discrete_int, arctan, choose
+from numpy import sqrt, pi, exp, array, log, euler_gamma, sin, inf, linspace
+from helpers.draw import Draw, format_histo, dirname, realpath, join, constants, M_E, bg2b, discrete_int, arctan, choose, beta_gamma, do_pickle
 from src.element import Element, hbar
+from src.particle import Particle
+from src.eloss import K
 
 Dir = dirname(dirname(realpath(__file__)))
 
@@ -69,18 +71,42 @@ class CrossSection(object):
 
 class Landau(object):
 
-    Dir = dirname(dirname(realpath(__file__)))
+    def __init__(self, part: Particle, el: Element, p=260, t=500):
 
-    def __init__(self):
-        self.F = Draw.make_tf1('Landau', self.f, -10, 10)
-        self.Draw = Draw(join(Landau.Dir, 'main.ini'))
+        bg = beta_gamma(p, part.M)
+        b2 = bg2b(bg) ** 2
+        self.Xi = t * 1e-4 * el.Density * K * el.Z / el.A / b2 * 1e3  # [keV]
+        self.EPrime = el.IE ** 2 * (1 - b2) / (2 * M_E * b2) * exp(b2) * 1e3  # [keV]
+        self.MPV0 = self.Xi * (log(self.Xi / self.EPrime) + 1 - euler_gamma - .223)  # [keV]
+        self.MPV = self.get_mpv(p, part.Name, t, el.Name)
+        self.ROOTMPV = 0.22278 * self.Xi + self.MPV
+        self.Title = 'Energy Loss of {}MeV {}s in {}#mum {}'.format(p, part.Name, t, el.Name)
+
+        self.Draw = Draw(join(Dir, 'main.ini'))
+
+    def lamda(self, x):
+        return x / self.Xi - (log(self.Xi / self.EPrime) - 1 + euler_gamma)
+
+    def f(self, x):
+        return 1 / pi * Draw.make_tf1('i', lambda u: exp(-u * log(u) - self.lamda(x) * u) * sin(pi * u) if self.lamda(x) > -4 else 0).Integral(0, inf)
 
     @staticmethod
-    def f(x):
+    def f_approx(x):
         return 1 / sqrt(2 * pi) * exp((abs(x) - 1) / 2 - exp(abs(x) - 1))
 
+    def get_mpv(self, p, np, t, ne):
+        def f():
+            return Draw.make_tf1('f', self.f).GetMaximumX(self.MPV0 - 2 * self.Xi, self.MPV0)
+        return do_pickle(join(Dir, 'data', 'landau', '{}MeV_{}s-{}um{}.pickle'.format(p, np, t, ne)), f)
+
     def draw(self):
-        self.Draw(self.F)
+        f = Draw.make_f('Landau', 'landau', self.MPV - 3 * self.Xi, self.MPV + 15 * self.Xi, [1, self.ROOTMPV, self.Xi], npx=500, title=self.Title, x_tit='Energy Loss [keV]', y_tit='Probability')
+        self.Draw(f)
+
+    def draw_real(self):
+        # f = Draw.make_tf1('Landau', self.f, self.MPV - self.Xi, self.MPV * 10 * self.Xi)
+        x = linspace(self.MPV - 3 * self.Xi, self.MPV + 10 * self.Xi, 100)
+        self.Draw.graph(x, [self.f(i) for i in x], x_tit='Energy Loss [keV]', y_tit='Probability', draw_opt='al', lm=.12, y_off=1.6, title=self.Title)
 
     def root(self, mpv=100, s=10):
         f = Draw.make_f('Landau', 'landau', -100, 1000, [1, mpv, s])
