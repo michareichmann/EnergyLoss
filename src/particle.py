@@ -5,6 +5,7 @@ from scipy import constants
 class Particle(object):
     def __init__(self, name, mass, lifetime=inf):
         self.Name = name
+        self.Symbol = self.Name[:2]
         self.M = mass / constants.e * constants.c ** 2 / 1e6 if mass < 1e-10 else mass
         self.Tau = lifetime
 
