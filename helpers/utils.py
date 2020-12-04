@@ -941,12 +941,12 @@ def beta_gamma(p, m):
     return lorentz_factor(v) * v
 
 
-def beta(bg):
+def bg2b(bg):
     return sqrt(1 / (1 / (bg * bg) + 1))
 
 
-def gamma(bg):
-    return bg / beta(bg)
+def bg2g(bg):
+    return bg / bg2b(bg)
 
 
 def t_diff(s, p, m1, m2):
