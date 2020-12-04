@@ -11,8 +11,6 @@ MetaDir = join(Dir, 'data', 'meta')
 
 class CrossSection(object):
 
-    E
-
     def __init__(self, el: Element):
         self.El = el
         self.KR = 2 * pi * constants.physical_constants['classical electron radius'][0] ** 2 * M_E * 1e6 * 1e4  # ev cm2
