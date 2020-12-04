@@ -1,5 +1,5 @@
-from helpers.draw import choose, sqrt, Draw, join, dirname, realpath, print_table, beta_gamma, M_E, e2p, file_exists, constants
-from numpy import genfromtxt, array, zeros
+from helpers.draw import choose, sqrt, Draw, join, dirname, realpath, print_table, beta_gamma, M_E, e2p, file_exists, constants, discrete_int, interpolate_y
+from numpy import genfromtxt, array, zeros, ones, append, pi 
 import periodictable as pt
 from src.particle import Muon
 
@@ -9,8 +9,9 @@ hbar = constants.physical_constants['Planck constant over 2 pi in eV s'][0]
 class Element(object):
     Dir = dirname(dirname(realpath(__file__)))
 
-    def __init__(self, el: pt.core.Element, rad_length, e_eh=1., density=None, name=None):
+    def __init__(self, el: pt.core.Element, rad_length, e_eh=1., density=None, name=None, symbol=None):
         self.Name = choose(name, el.name.title())
+        self.Symbol = choose(symbol, el.symbol)
         self.Z = el.number
         self.A = el.mass
         self.DataFile = join(self.Dir, 'data', 'muons', '{}.txt'.format(self.Name))
@@ -25,7 +26,9 @@ class Element(object):
 
         # STRAGGLING
         self.NE = constants.physical_constants['Avogadro constant'][0] * self.Density * self.Z / self.A
+        self.N = constants.physical_constants['Avogadro constant'][0] * self.Density / self.A
         self.E, self.E1, self.E2, self.PIC = self.get_photo_data()
+        self.add_xray_data()
 
     def __repr__(self):
         header = ['Name', 'Z', 'A [g/mol]', 'ρ [g/cm3]', 'a', 'k', 'x0', 'x1', 'I [MeV]', 'C', 'δ0', 'EPlasma [MeV]']
@@ -46,10 +49,25 @@ class Element(object):
         if file_exists(f):
             data = genfromtxt(f)
             data = data[data[:, 0].argsort()]
-            e, e1, e2 = data[:, 0], data[:, 2] ** 2 + data[:, 3] ** 2, 2 * data[:, 2] * data[:, 3]
-            pic = e2 * self.Z * e / (self.NE * constants.speed_of_light * hbar) * 1e16  # [Mbarn]
+            e, e1, e2 = data[:, 0], data[:, 2] ** 2 - data[:, 3] ** 2, 2 * data[:, 2] * data[:, 3]
+            # pic = e2 * self.Z * e / (self.NE * constants.speed_of_light * hbar) * 1e16  # [Mbarn]
+            pic = e2 * e / ((e1 ** 2 + e2 ** 2) * self.N * constants.speed_of_light * hbar) * 1e16  # [Mbarn]
             return e, e1, e2, pic
         return zeros((4, 1))
+    
+    def kramers_kronig(self):
+        return 1 + 2 / pi * array([discrete_int(self.E, self.E * self.E2 / (self.E ** 2 - e ** 2)) for e in self.E])
+        # return 1 +
+
+    def add_xray_data(self):
+        f = join(self.Dir, 'data', 'xray', '{}.txt'.format(self.Name))
+        if file_exists(f):
+            data = genfromtxt(f)
+            e, mu = data[:, 0] * 1e6, data[:, 1]
+            e1, e2, pic = ones(e.size), mu * hbar * constants.speed_of_light * self.Density * 100 / e, mu * self.Density / self.N * 1e18
+            self.E, self.E1, self.E2, self.PIC = append(self.E, e), append(self.E1, e1), append(self.E2, e2), append(self.PIC, pic)
+            cut = self.E.argsort()
+            self.E, self.E1, self.E2, self.PIC = self.E[cut], self.E1[cut], self.E2[cut], self.PIC[cut]
 
     def get_ionisation(self, linear=True, mass=False, t=500):
         return self.get_data(2, linear, mass, t)
@@ -59,6 +77,14 @@ class Element(object):
 
     def get_brems(self, linear=True, mass=False, t=500):
         return self.get_data(3, linear, mass, t)
+
+    def e1(self, e):
+        i = next(i for i, ie in enumerate(self.E) if e < ie) - 1
+        return interpolate_y(*self.E[i:i + 2], *self.E1[i:i + 2], e)
+
+    def e2(self, e):
+        i = next(i for i, ie in enumerate(self.E) if e < ie) - 1
+        return interpolate_y(*self.E[i:i + 2], *self.E2[i:i + 2], e)
     # endregion GET
     # -------------------------------------
 
@@ -93,7 +119,7 @@ class Element(object):
 
 
 Si = Element(pt.silicon, 21.82, e_eh=3.68)
-Dia = Element(pt.carbon, 42.70, e_eh=13.3, density=3.52, name='Diamond')
+Dia = Element(pt.carbon, 42.70, e_eh=13.3, density=3.52, name='Diamond', symbol='Dia')
 Cu = Element(pt.copper, 12.86)
 Ar = Element(pt.argon, 19.55, density=1.662e-3)
 Pb = Element(pt.lead, 6.37)
