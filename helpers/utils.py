@@ -502,6 +502,12 @@ def get_base_dir():
     return dirname(dirname(realpath(__file__)))
 
 
+def make_meta_path(main_dir, sub_dir='', name='', ext='pickle', suffix=''):
+    ensure_dir(join(main_dir, sub_dir))
+    suf = '{}{}'.format('-' if suffix and name else '', '_'.join(make_list(suffix)))
+    return join(main_dir, sub_dir, '{}{}.{}'.format(name, suf, ext.strip('.')))
+
+
 def do_pickle(path, func, value=None, redo=False, *args, **kwargs):
     if value is not None:
         with open(path, 'wb') as f:
