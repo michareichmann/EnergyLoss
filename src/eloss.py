@@ -4,24 +4,24 @@ from typing import Any
 from src.element import *
 from src.particle import *
 
+K = 2 * constants.pi * constants.Avogadro * constants.physical_constants['classical electron radius'][0] ** 2 * M_E * 1e4  # MeV cm^2/mol
+Dir = dirname(dirname(realpath(__file__)))
+
 
 class Eloss(object):
 
-    Dir = dirname(dirname(realpath(__file__)))
-    K = 2 * constants.pi * constants.Avogadro * constants.physical_constants['classical electron radius'][0] ** 2 * M_E * 1e4  # MeV cm^2/mol
-
-    def __init__(self, part: Particle, el: Element, thickness=500, absolute=False, mass=False):
-        self.Linear = not absolute
+    def __init__(self, part: Particle, el: Element, thickness=500, abst=False, mass=False):
+        self.Linear = not abst
         self.Mass = mass  # mass stopping power
         self.P = part
         self.El = el
         self.T = thickness * 1e-4  # um to cm
         self.X = self.T * self.El.Density
-        self.C = Eloss.K * self.El.Z / self.El.A  # MeV / cm
+        self.C = K * self.El.Z / self.El.A  # [MeV/cm]
         self.F0 = None
         self.F = self.make_f()
 
-        self.Draw = Draw(join(Eloss.Dir, 'main.ini'))
+        self.Draw = Draw(join(Dir, 'main.ini'))
 
     def __call__(self, p, part: Particle = None, el: Element = None):
         self.reload(part, el)
@@ -87,7 +87,7 @@ class Eloss(object):
 
     def get_w_max(self, bg):
         """returns maximum energy transfer in a single collsion with a free electron in [MeV]"""
-        return 2 * M_E * bg ** 2 / (1 + 2 * bg / beta(bg) * M_E / self.P.M + (M_E / self.P.M) ** 2)
+        return 2 * M_E * bg ** 2 / (1 + 2 * bg / bg2b(bg) * M_E / self.P.M + (M_E / self.P.M) ** 2)
 
     def get_lin_fac(self):
         return 1 if self.Mass else self.El.Density if self.Linear else self.X * 1000
@@ -103,8 +103,8 @@ class Eloss(object):
 
 class LandauVavilovBichsel(Eloss):
 
-    def __init__(self, part: Particle, el: Element, t=500, absolute=False, mass=False):
-        super().__init__(part, el, t, absolute, mass)
+    def __init__(self, part: Particle, el: Element, t=500, abst=False, mass=False):
+        super().__init__(part, el, t, abst, mass)
 
     def make_f(self):
         f = Draw.make_tf1('Landau Vavilov Bichsel {}'.format(self.get_str()), self.f, .1, 1e6)
@@ -119,14 +119,17 @@ class LandauVavilovBichsel(Eloss):
     def get_xi(self, bg):
         return self.C * self.X / calc_speed(bg * self.P.M, self.P.M) ** 2
 
+    def get_kappa(self, bg):
+        return self.get_xi(bg) / self.get_w_max(bg)
+
 
 class BetheBloch(Eloss):
     """returns the mean energy loss of particle of momentum p and mass m in el [MeV / cm]"""
 
-    def __init__(self, part: Particle, el: Element, t=500, dens_corr: Any = True, wcut=None, absolute=False, mass=False):
+    def __init__(self, part: Particle, el: Element, t=500, dens_corr: Any = True, wcut=None, abst=False, mass=False):
         self.DensityCorr = dens_corr
         self.WCut = wcut
-        super().__init__(part, el, t, absolute, mass)
+        super().__init__(part, el, t, abst, mass)
 
     def get_fall_coeff(self, p=None, e=None, show=False):
         self.reload(p, e)
@@ -144,14 +147,14 @@ class BetheBloch(Eloss):
         return f
 
     def f(self, bg):
-        b = beta(bg)
+        b = bg2b(bg)
         d = self.density_correction(bg) if self.DensityCorr else 0
         w_max = self.get_w_max(bg)
         w_cut = w_max if self.WCut is None else min(self.WCut, w_max)
         return self.get_lin_fac() * self.C / (b * b) * (log(2 * M_E * bg * bg * w_cut / (self.El.IE * self.El.IE)) - b * b * (1 + w_cut / w_max) - d + self.get_correction(bg))
 
     def get_correction(self, bg):
-        b, g = beta(bg), gamma(bg)
+        b, g = bg2b(bg), bg2g(bg)
         if self.P.Name == 'Electron':
             return 1 + b * b - (2 * g - 1) / (g * g) * log(2) + ((g - 1) / g) ** 2 / 8
         elif self.P.Name == 'Positron':
@@ -159,7 +162,7 @@ class BetheBloch(Eloss):
         return 0
 
     def get_w_max(self, bg):
-        return .5 * M_E * (gamma(bg) - 1) if self.P.Name == 'Electron' else M_E * (gamma(bg) - 1) if self.P.Name == 'Positron' else super(BetheBloch, self).get_w_max(bg)
+        return .5 * M_E * (bg2g(bg) - 1) if self.P.Name == 'Electron' else M_E * (bg2g(bg) - 1) if self.P.Name == 'Positron' else super(BetheBloch, self).get_w_max(bg)
 
     def delta_rays(self, wmin, p):
         b0 = calc_speed(p, self.P.M)
@@ -174,8 +177,8 @@ class BetheBloch(Eloss):
 
 class Bremsstrahlung(Eloss):
 
-    def __init__(self, part: Particle, el: Element, t=500, absolute=False, mass=False):
-        super().__init__(part, el, t, absolute, mass)
+    def __init__(self, part: Particle, el: Element, t=500, abst=False, mass=False):
+        super().__init__(part, el, t, abst, mass)
         self.N = constants.physical_constants['Avogadro constant'][0] * self.El.Density / self.El.A
         self.F0 = self.N * 1e4 * self.El.Z ** 2 * constants.physical_constants['classical electron radius'][0] ** 2 * constants.alpha / self.El.Density * self.get_lin_fac()
 
