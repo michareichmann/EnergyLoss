@@ -2,3 +2,4 @@
 __init__.py
 *.pdf
 __pycache__
+data/meta
