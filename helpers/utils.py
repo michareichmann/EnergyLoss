@@ -15,7 +15,7 @@ from threading import Thread
 from time import time, sleep
 
 from numpy import sqrt, array, average, mean, arange, log10, concatenate, where, any, count_nonzero, full, ndarray, exp, sin, cos, arctan, zeros, dot, roll, arctan2, frombuffer, split, cumsum
-from numpy import histogram, log2, diff, isfinite
+from numpy import histogram, log2, diff, isfinite, pi
 from os import makedirs, _exit, remove
 from os import path as pth
 from os.path import dirname, realpath, join
@@ -834,6 +834,10 @@ def discrete_int(x, y):
     dx, dy = diff(x), diff(y)
     i = dx * y[:-1] + .5 * dx * dy
     return sum(i[isfinite(i)])
+
+
+def kramers_kronig(x, y):
+    return 1 + 2 / pi * array([discrete_int(x, x * y / (x ** 2 - ix ** 2)) for ix in x])
 
 
 class FitRes(object):
