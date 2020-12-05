@@ -53,7 +53,8 @@ class Element(object):
         f = join(Dir, 'data', 'xray', '{}.txt'.format(self.Name))
         if file_exists(f):
             data = genfromtxt(f)
-            return array([data[:, 0] * 1e6, data[:, 1] * hbar * constants.speed_of_light * self.Density * 100 / data[:, 0]]).T
+            e = data[:, 0] * 1e6
+            return array([e, data[:, 1] * hbar * constants.speed_of_light * self.Density * 100 / e]).T
 
     def get_photo_data(self):
         file_name = join(Dir, 'data', 'dielectric', '{}.txt'.format(self.Name))
@@ -61,13 +62,14 @@ class Element(object):
             x_ray_data, refr_data = self.get_refraction_data(), self.get_xray_data()
             if x_ray_data is None or refr_data is None:
                 return zeros((4, 1))
-            e, e2 = concatenate([x_ray_data, refr_data]).T
+            data = concatenate([x_ray_data, refr_data])
+            e, e2 = data[data[:, 0].argsort()].T
             e_a = constants.speed_of_light * hbar * sqrt(4 * pi * constants.physical_constants['classical electron radius'][0] * self.NE * 1e6)  # [eV]
-            e2 /= discrete_int(e, e * e2) * 2 * pi / e_a ** 2  # sum rule: int(E*e2 dE) = pi * e_a^2 / 2
+            e2 /= discrete_int(e, e * e2) * 2 / pi / e_a ** 2  # sum rule: int(E*e2 dE) = pi * e_a^2 / 2
             e1 = kramers_kronig(e, e2)
             data = array([e, e1, e2, e2 * e / ((e1 ** 2 + e2 ** 2) * self.N * constants.speed_of_light * hbar) * 1e16]).T
             ensure_dir(join(Dir, 'data', 'dielectric'))
-            savetxt(join(Dir, 'data', 'dielectric', '{}.txt'.format(self.Name)), data[e.argsort()], ['%.3e', '%.7e', '%.7e', '%.7e'], header='E [ev]  ε1            ε2            σ [Mb]')
+            savetxt(join(Dir, 'data', 'dielectric', '{}.txt'.format(self.Name)), data, ['%.3e', '%.7e', '%.7e', '%.7e'], header='E [ev]  ε1            ε2            σ [Mb]')
         return genfromtxt(file_name).T
 
     def get_ionisation(self, linear=True, mass=False, t=500):
