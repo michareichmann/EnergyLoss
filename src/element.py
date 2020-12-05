@@ -1,34 +1,33 @@
-from helpers.draw import choose, sqrt, Draw, join, dirname, realpath, print_table, beta_gamma, M_E, e2p, file_exists, constants, discrete_int, interpolate_y
-from numpy import genfromtxt, array, zeros, ones, append, pi 
+from helpers.draw import choose, sqrt, Draw, join, dirname, realpath, print_table, beta_gamma, M_E, e2p, file_exists, constants, discrete_int, interpolate_y, kramers_kronig, ensure_dir
+from numpy import genfromtxt, array, pi, concatenate, savetxt, zeros
 import periodictable as pt
 from src.particle import Muon
 
 hbar = constants.physical_constants['Planck constant over 2 pi in eV s'][0]
+Dir = dirname(dirname(realpath(__file__)))
 
 
 class Element(object):
-    Dir = dirname(dirname(realpath(__file__)))
 
     def __init__(self, el: pt.core.Element, rad_length, e_eh=1., density=None, name=None, symbol=None):
         self.Name = choose(name, el.name.title())
         self.Symbol = choose(symbol, el.symbol)
         self.Z = el.number
         self.A = el.mass
-        self.DataFile = join(self.Dir, 'data', 'muons', '{}.txt'.format(self.Name))
-        self.EDataFile = join(self.Dir, 'data', 'electrons', '{}.txt'.format(self.Name))
+        self.DataFile = join(Dir, 'data', 'muons', '{}.txt'.format(self.Name))
+        self.EDataFile = join(Dir, 'data', 'electrons', '{}.txt'.format(self.Name))
         self.X0 = rad_length
         self.a, self.k, self.x0, self.x1, self.IE, self.C, self.D0 = genfromtxt(self.DataFile, skip_header=4, max_rows=1)
         self.IE *= 1e-6  # convert to MeV
         self.Density = choose(density, el.density)
         self.EPlasma = sqrt(self.Density * self.Z / self.A) * 28.816 * 1e-6  # MeV
         self.EEH = e_eh  # eV
-        self.Draw = Draw(join(self.Dir, 'main.ini'))
+        self.Draw = Draw(join(Dir, 'main.ini'))
 
         # STRAGGLING
         self.NE = constants.physical_constants['Avogadro constant'][0] * self.Density * self.Z / self.A
         self.N = constants.physical_constants['Avogadro constant'][0] * self.Density / self.A
         self.E, self.E1, self.E2, self.PIC = self.get_photo_data()
-        self.add_xray_data()
 
     def __repr__(self):
         header = ['Name', 'Z', 'A [g/mol]', 'ρ [g/cm3]', 'a', 'k', 'x0', 'x1', 'I [MeV]', 'C', 'δ0', 'EPlasma [MeV]']
@@ -44,30 +43,32 @@ class Element(object):
         x, y = genfromtxt(self.EDataFile, usecols=[0, col], skip_header=8).T
         return array([beta_gamma(e2p(x, M_E), M_E), y * (1 if mass else self.Density if linear else t * self.Density)])
 
-    def get_photo_data(self):
-        f = join(self.Dir, 'data', 'photo', '{}.txt'.format(self.Name))
+    def get_refraction_data(self):
+        f = join(Dir, 'data', 'photo', '{}.txt'.format(self.Name))
         if file_exists(f):
             data = genfromtxt(f)
-            data = data[data[:, 0].argsort()]
-            e, e1, e2 = data[:, 0], data[:, 2] ** 2 - data[:, 3] ** 2, 2 * data[:, 2] * data[:, 3]
-            # pic = e2 * self.Z * e / (self.NE * constants.speed_of_light * hbar) * 1e16  # [Mbarn]
-            pic = e2 * e / ((e1 ** 2 + e2 ** 2) * self.N * constants.speed_of_light * hbar) * 1e16  # [Mbarn]
-            return e, e1, e2, pic
-        return zeros((4, 1))
-    
-    def kramers_kronig(self):
-        return 1 + 2 / pi * array([discrete_int(self.E, self.E * self.E2 / (self.E ** 2 - e ** 2)) for e in self.E])
-        # return 1 +
+            return array([data[:, 0], 2 * data[:, 2] * data[:, 3]]).T
 
-    def add_xray_data(self):
-        f = join(self.Dir, 'data', 'xray', '{}.txt'.format(self.Name))
+    def get_xray_data(self):
+        f = join(Dir, 'data', 'xray', '{}.txt'.format(self.Name))
         if file_exists(f):
             data = genfromtxt(f)
-            e, mu = data[:, 0] * 1e6, data[:, 1]
-            e1, e2, pic = ones(e.size), mu * hbar * constants.speed_of_light * self.Density * 100 / e, mu * self.Density / self.N * 1e18
-            self.E, self.E1, self.E2, self.PIC = append(self.E, e), append(self.E1, e1), append(self.E2, e2), append(self.PIC, pic)
-            cut = self.E.argsort()
-            self.E, self.E1, self.E2, self.PIC = self.E[cut], self.E1[cut], self.E2[cut], self.PIC[cut]
+            return array([data[:, 0] * 1e6, data[:, 1] * hbar * constants.speed_of_light * self.Density * 100 / data[:, 0]]).T
+
+    def get_photo_data(self):
+        file_name = join(Dir, 'data', 'dielectric', '{}.txt'.format(self.Name))
+        if not file_exists(file_name):
+            x_ray_data, refr_data = self.get_refraction_data(), self.get_xray_data()
+            if x_ray_data is None or refr_data is None:
+                return zeros((4, 1))
+            e, e2 = concatenate([x_ray_data, refr_data]).T
+            e_a = constants.speed_of_light * hbar * sqrt(4 * pi * constants.physical_constants['classical electron radius'][0] * self.NE * 1e6)  # [eV]
+            e2 /= discrete_int(e, e * e2) * 2 * pi / e_a ** 2  # sum rule: int(E*e2 dE) = pi * e_a^2 / 2
+            e1 = kramers_kronig(e, e2)
+            data = array([e, e1, e2, e2 * e / ((e1 ** 2 + e2 ** 2) * self.N * constants.speed_of_light * hbar) * 1e16]).T
+            ensure_dir(join(Dir, 'data', 'dielectric'))
+            savetxt(join(Dir, 'data', 'dielectric', '{}.txt'.format(self.Name)), data[e.argsort()], ['%.3e', '%.7e', '%.7e', '%.7e'], header='E [ev]  ε1            ε2            σ [Mb]')
+        return genfromtxt(file_name).T
 
     def get_ionisation(self, linear=True, mass=False, t=500):
         return self.get_data(2, linear, mass, t)
