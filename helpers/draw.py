@@ -471,7 +471,7 @@ class Draw(object):
         f.SetParameters(*pars) if pars is not None else do_nothing()
         do(f.SetNpx, npx)
         format_histo(f, *args, **kwargs)
-        return f
+        return Draw.add(f)
 
     @staticmethod
     def make_tf1(name, f, xmin=0, xmax=1, color=None, w=None, style=None, title=None, *args, **kwargs):
@@ -483,8 +483,7 @@ class Draw(object):
         f0 = TF1(name, tmp, xmin, xmax)
         do([f0.SetLineColor, f0.SetLineWidth, f0.SetLineStyle], [color, w, style])
         do(f0.SetTitle, title)
-        Draw.add(f0)
-        return f0
+        return Draw.add(f0)
 
     @staticmethod
     def make_tgrapherrors(x=None, y=None, **kwargs):
