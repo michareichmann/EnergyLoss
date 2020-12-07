@@ -66,6 +66,12 @@ def print_energies(p, el: Element, t=500, table=False):
         print(make_latex_table_row(concatenate(array(values).T)))
 
 
+def draw_straggling(part=Pion, el=Dia, p=260, t=500, n=1e6, bin_size=1):
+    g = Straggling(part, el, p, t).draw(n, bin_size=bin_size)
+    f = Landau(part, el, p, t).draw_same(max(get_graph_y(g, err=False)))
+    Draw.legend([g, f], ['Straggling', 'Landau'], 'l')
+
+
 if __name__ == '__main__':
-    z = CrossSection(Si)
+    z = Straggling(Pion, Si)
     a = Landau(Pion, Dia, 260, 500)
