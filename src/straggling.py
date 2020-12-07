@@ -11,15 +11,20 @@ MetaDir = join(Dir, 'data', 'meta')
 
 class CrossSection(object):
 
-    def __init__(self, el: Element):
+    def __init__(self, part: Particle, el: Element):
         self.El = el
+        self.P = part
         self.KR = 2 * pi * constants.physical_constants['classical electron radius'][0] ** 2 * M_E * 1e6 * 1e4  # ev cm2
         self.Draw = Draw(join(Dir, 'main.ini'))
         self.Er, self.G = 18.5, 2.9
+        self.PBar = PBar()
 
     @staticmethod
     def get_emax(bg):
         return bg ** 2 * 2 * M_E * 1e6  # eV
+
+    def get_wmax(self, bg):
+        return 2 * M_E * bg ** 2 / (1 + 2 * bg / bg2b(bg) * M_E / self.P.M + (M_E / self.P.M) ** 2) * 1e6
 
     def draw_rf(self, bg, xmin=1, xmax=1e5):
         f = Draw.make_tf1('rf', lambda x: self.rutherford(x, bg), xmin, xmax, title='Rutherford Cross Section')
@@ -72,6 +77,18 @@ class CrossSection(object):
         e, cs = self.El.E, self.get_pai(bg)
         return array([discrete_int(e[:i], cs[:i]) for i in range(e.size)]) / discrete_int(e, cs)
 
+    def make_table(self, bg, n=1e6):
+        p, e = self.get_cde(bg), self.El.E
+        w_max = self.get_wmax(bg)
+        vals = []
+        info('generating look up table ...')
+        self.PBar.start(n)
+        for i in range(int(n)):
+            j = where(p * n > i)[0][0] - 1
+            vals.append((i / n - p[j]) * (e[j + 1] - e[j]) / (p[j + 1] - p[j]) + e[j + 1] if e[j] < w_max else w_max)
+            self.PBar.update()
+        return array(vals)
+
     def get_eloss(self, p, cde):
         i = where(cde > p)[0][0] - 1
         return (p - cde[i]) * (self.El.E[i + 1] - self.El.E[i]) / (cde[i + 1] - cde[i]) + self.El.E[i + 1]
@@ -98,16 +115,17 @@ class CrossSection(object):
     def draw_cde(self, bg=4):
         self.Draw.graph(self.El.E, self.get_cde(bg), 'CDE', x_tit='Energy [ev]', y_tit='CDE', draw_opt='al', logx=True)
 
-    def draw(self, bg, t=300, n=1e5):
-        pbar = PBar()
-        pbar.start(n)
-        collissions = poisson(t / self.get_mfp(bg), int(n))
-        cde = self.get_cde(bg)
+    def draw(self, bg, t=300, n=1e5, np=1e5, bin_size=None):
+        table = self.make_table(bg, np)
+        info('simulating collisions ...')
         e = []
-        for n_col in collissions:
-            e.append(sum(self.get_eloss(p, cde) for p in rand(n_col)))
-            pbar.update()
-        self.Draw.distribution(e)
+        self.PBar.start(n)
+        for n_col in poisson(t / self.get_mfp(bg), int(n)):
+            e.append(sum(table[randint(0, np, n_col)]) / 1e3)  # to [keV]
+            self.PBar.update()
+        h = self.Draw.distribution(e, make_bins(*ax_range(min(e), mean(e) * 2, .1), bin_size, n=sqrt(n) if bin_size is None else None), normalise=True, show=False)
+        x, y = get_hist_vecs(h, err=False)
+        return self.Draw.graph(x, y, draw_opt='al', x_tit='Energy Loss [keV]', y_tit='Probability')
 
 
 class Landau(object):
