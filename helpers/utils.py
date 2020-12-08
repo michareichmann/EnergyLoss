@@ -15,7 +15,7 @@ from threading import Thread
 from time import time, sleep
 
 from numpy import sqrt, array, average, mean, arange, log10, concatenate, where, any, count_nonzero, full, ndarray, exp, sin, cos, arctan, zeros, dot, roll, arctan2, frombuffer, split, cumsum
-from numpy import histogram, log2, diff, isfinite, pi
+from numpy import histogram, log2, diff, isfinite, pi, genfromtxt, savetxt
 from os import makedirs, _exit, remove
 from os import path as pth
 from os.path import dirname, realpath, join
@@ -469,8 +469,12 @@ def scale_histo(histo, value=None, to_max=False, x_range=None):
     return h
 
 
-def make_cut_string(cut, n):
-    return '{n}Cuts'.format(n=str(n).zfill(2)) if cut is not None else ''
+def respape_data(f, n, fmt=None, fac=1):
+    fmt = choose(fmt, ['%.4e', '%.6e', '%.4e', '%.4e'])
+    a = genfromtxt(f)
+    a = a.reshape(a.size // n, n)
+    a[:, -1] *= fac
+    savetxt(f, a, fmt=fmt)
 
 
 def get_resolution():
