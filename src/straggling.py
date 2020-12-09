@@ -32,6 +32,7 @@ class Straggling(object):
             self.BG = bg
             self.B2 = bg2b(bg)
             self.C = constants.alpha / (self.B2 * pi) * constants.physical_constants['Rydberg constant times hc in eV'][0]
+            self.Theta = arctan(self.El.E2 * self.B2 / (1 - self.El.E1 * self.B2))
 
     # -------------------------------------
     # region GET
@@ -48,19 +49,11 @@ class Straggling(object):
         return self.C * self.El.PIC / self.El.E / self.El.Z * log(2 * M_E * 1e6 * self.B2 / self.El.E)
 
     def get_large(self):
-        ints = [discrete_int(self.El.E[:i], self.El.PIC[:i]) for i in range(self.El.E.size)]
+        ints = [discrete_int(self.El.E[:i + 1], self.El.PIC[:i + 1]) for i in range(self.El.E.size)]
         return self.C / self.El.E ** 2 / self.El.Z * ints
 
     def get_pai(self):
         return self.get_longitudinal() + self.get_transversal() + self.get_large()
-
-    def get_mfp(self, bg=None):
-        old = self.BG
-        self.set_bg(bg)
-        n = self.El.NE / self.El.Z
-        mfp = 1 / (n * discrete_int(self.El.E, self.get_pai())) * 1e22  # um
-        self.set_bg(old)
-        return mfp
 
     def get_cde(self):
         e, cs = self.El.E, self.get_pai()
@@ -81,8 +74,24 @@ class Straggling(object):
         i = where(cde > p)[0][0] - 1
         return (p - cde[i]) * (self.El.E[i + 1] - self.El.E[i]) / (cde[i + 1] - cde[i]) + self.El.E[i + 1]
 
-    def get_sigma(self):
-        return self.El.N * discrete_int(self.El.E, self.get_pai()) * 1e-22  # 1/um
+    def get_moment(self, n=0, bg=None):
+        old = self.BG
+        self.set_bg(bg)
+        v = self.El.N * discrete_int(self.El.E, self.get_pai() * self.El.E ** n) * 1e-22  # 1/um
+        self.set_bg(old)
+        return v
+
+    def get_ccs(self, bg=None):
+        return self.get_moment(0, bg)
+
+    def get_stopping(self, bg=None):
+        return self.get_moment(1, bg) * 1e-2  # [um] -> [cm], [eV] -> [MeV]
+
+    def get_width(self, bg=None):
+        return self.get_moment(2, bg)
+
+    def get_mfp(self, bg=None):
+        return 1 / self.get_ccs(bg)
     # endregion GET
     # -------------------------------------
 
