@@ -434,8 +434,8 @@ class Draw(object):
         self.histo(s, draw_opt=draw_opt, leg=leg, lm=get_last_canvas().GetLeftMargin(), show=show)
         return s
 
-    def multigraph(self, graphs, title, leg_titles=None, bin_labels=None, x_tit=None, y_tit=None, draw_opt='ap', gridy=None, lm=None, bm=None, show=True, logx=None, color=True, c=None, y_range=None,
-                   *args, **kwargs):
+    def multigraph(self, graphs, title, leg_titles=None, bin_labels=None, x_tit=None, y_tit=None, draw_opt='ap', gridy=None, lm=None, bm=None, show=True, logx=None, logy=None, color=True, c=None,
+                   y_range=None, *args, **kwargs):
         g0 = graphs[0]
         m = TMultiGraph(Draw.get_name('mg'), ';'.join([title, choose(x_tit, g0.GetXaxis().GetTitle()), choose(y_tit, g0.GetYaxis().GetTitle())]))
         leg = None if leg_titles is None else Draw.make_legend(nentries=len(graphs), w=.2)
@@ -447,7 +447,7 @@ class Draw(object):
         format_histo(m, draw_first=True, y_off=g0.GetYaxis().GetTitleOffset(), x_tit=choose('', None, bin_labels), y_range=y_range)
         set_bin_labels(m, bin_labels)
         m.GetListOfFunctions().Add(leg) if leg_titles is not None else do_nothing()
-        self.histo(m, draw_opt=draw_opt, leg=leg, lm=lm, bm=choose(.26, bm, bin_labels), gridy=gridy, show=show, logx=logx, canvas=c)
+        self.histo(m, draw_opt=draw_opt, leg=leg, lm=lm, bm=choose(.26, bm, bin_labels), gridy=gridy, show=show, logx=logx, canvas=c, logy=logy)
         return m
 
     @staticmethod
