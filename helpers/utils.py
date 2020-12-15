@@ -157,6 +157,18 @@ def interpolate_x(x1, x2, y1, y2, y):
     return (y - p0) / p1 if p1 else 0
 
 
+def points2x(x, y, iy):
+    ix = where(y > iy)[0][0] - 1
+    if ix + 1 >= x.size:
+        return x[-1]
+    x1, x2, y1, y2 = x[ix], x[ix + 1], y[ix], y[ix + 1]
+    return (iy - y1) * (x2 - x1) / (y2 - y1) + x1
+
+
+def points2y(x, y, ix):
+    return points2x(y, x, ix)
+
+
 def interpolate_y(x1, x2, y1, y2, x):
     p1 = get_p1(x1, x2, y1, y2)
     p0 = get_p0(x1, y1, p1)
