@@ -1,5 +1,6 @@
-from numpy import log, euler_gamma, inf, sum
-from numpy.random import randint, poisson
+from numpy import log, euler_gamma, inf, sum, convolve
+from numpy.random import randint
+from scipy.stats import poisson
 from helpers.draw import *
 from src.element import Element, hbar
 from src.eloss import LandauVavilovBichsel
@@ -14,6 +15,7 @@ class Straggling(object):
     def __init__(self, part: Particle, el: Element, p=260, t=300):
 
         self.El = el
+        self.E = el.E
         self.P = part
         self.Draw = Draw(join(Dir, 'main.ini'))
         self.PBar = PBar()
@@ -90,8 +92,23 @@ class Straggling(object):
     def get_width(self, bg=None):
         return self.get_moment(2, bg)
 
-    def get_mfp(self, bg=None):
+    def get_mfp0(self, bg=None):
         return 1 / self.get_ccs(bg)
+
+    def get_mfp(self, bg=None):
+        data = genfromtxt(join(Dir, 'data', 'SiRef.txt'))
+        bg = choose(bg, self.BG)
+        bgs, ccs = data[:, [0, 2]].T
+        return 1 / points2x(ccs, bgs, bg) if bg <= bgs[-1] else 1 / ccs[-1]
+
+    def get_convolutions(self, n=10, xmax=1000, step=.1):
+        x = arange(0, xmax, step)
+        s = self.get_pai()
+        y1 = array([points2y(self.E, s, ix) for ix in x])
+        convs = [y1]
+        for _ in range(n - 1):
+            convs.append(convolve(y1, convs[-1])[:x.size] * step)
+        return array(convs)
     # endregion GET
     # -------------------------------------
 
@@ -126,12 +143,32 @@ class Straggling(object):
         info('simulating collisions ...')
         e = []
         self.PBar.start(n)
-        for n_col in poisson(self.T / self.get_mfp(), int(n)):
+        for n_col in poisson.rvs(self.T / self.get_mfp(), size=int(n)):
             e.append(sum(table[randint(0, np, n_col)]) / 1e3)  # to [keV]
             self.PBar.update()
         h = self.Draw.distribution(e, make_bins(*ax_range(min(e), mean(e) * 2, .1), bin_size, n=sqrt(n) if bin_size is None else None), normalise=True, show=False)
         x, y = get_hist_vecs(h, err=False)
         return self.Draw.graph(x, y, draw_opt='al', x_tit='Energy Loss [keV]', y_tit='Probability')
+
+    def draw_conv(self, n=5, xmax=2000, step=.1):
+        x = arange(0, xmax, step)
+        graphs = [Draw.make_tgrapherrors(x, c, color=self.Draw.get_color(n)) for c in self.get_convolutions(n, xmax, step)]
+        tits = [str(i) for i in range(1, n + 1)] if n <= 10 else None
+        self.Draw.multigraph(graphs, 'Cross Section Convolutions', tits, x_range=[0, 100], y_range=[1e-6, .12], draw_opt='al', logy=True, logx=True)
+
+    def test0(self):
+        n = int(log2(self.T)) + 2
+        # t0 = self.get_ccs() * self.T / 2 ** n
+        t0 = self.T / 2 ** n / self.get_mfp()
+        convolutions = self.get_convolutions(10, 30000, 1)
+        d_poission = poisson.pmf(arange(1, 11), t0)
+        y = sum(d_poission.reshape(d_poission.size, 1) * convolutions, axis=0)
+        y /= discrete_int(arange(y.size), y)
+        for i in range(n):
+            y = convolve(y, y)[:int(10000 * (1.3 ** (n + 1)))]
+            y /= discrete_int(arange(y.size), y)
+        self.Draw.graph(arange(y.size) / 1e3, y, draw_opt='al')
+
     # endregion DRAW
     # -------------------------------------
 
