@@ -505,13 +505,15 @@ def print_table(rows, header=None, footer=None, prnt=True):
     col_width = [len(max(t[:, i], key=len)) for i in range(t.shape[1])]
     total_width = sum(col_width) + len(col_width) * 3 + 1
     hline = '{}'.format('~' * total_width)
+    lines = []
+    for i, row in enumerate(t):
+        if i in [0] + choose([1], [], header) + choose([t.shape[0] - 1], [], footer):
+            lines.append(hline)
+        lines.append('| {r} |'.format(r=' | '.join(word.ljust(n) for word, n in zip(row, col_width))))
+    lines.append('{}\n'.format(hline))
     if prnt:
-        for i, row in enumerate(t):
-            if i in [0] + choose([1], [], header) + choose([t.shape[0] - 1], [], footer):
-                print(hline)
-            print('| {r} |'.format(r=' | '.join(word.ljust(n) for word, n in zip(row, col_width))))
-        print('{}\n'.format(hline))
-    return rows
+        print('\n'.join(lines))
+    return '\n'.join(lines)
 
 
 def get_base_dir():
