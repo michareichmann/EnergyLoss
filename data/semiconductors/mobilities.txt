@@ -1,0 +1,28 @@
+C       (d)     2800    1500
+Si      (d)     1750   480
+Ge      (d)     4330    2400
+3C-SiC  (zb)    980     60
+# 2H-SiC  (h)     375     100
+ZnTe    (zb)    600     100
+BP      (zb)    190     500
+AlN     (w)     125     14
+AlP     (zb)    80      450
+AlAs    (zb)    294     105
+AlSb    (zb)    200     420
+# GaN     (zb)    760     350
+GaN     (w)     1245    370
+GaP     (zb)    189     140
+GaAs    (zb)    9340    450
+GaSb    (zb)    12040   1000
+InN     (w)     3100    39
+InP     (zb)    6460    180
+InAs    (zb)    33000   450
+InSb    (zb)    77000   1100
+ZnO     (w)     440     267
+ZnS     (zb)    275     72
+ZnSe    (zb)    1500    355
+# CdO     (rs)    216
+# CdS     (w)     390     48
+CdTe    (zb)    1260    104
+CdSe    (w)     900     50
+HgTe    (zb)    32000   320
