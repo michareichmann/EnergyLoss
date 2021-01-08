@@ -1,4 +1,4 @@
-from helpers.draw import choose, sqrt, Draw, join, dirname, realpath, print_table, beta_gamma, M_E, e2p, file_exists, constants, discrete_int, interpolate_y, kramers_kronig, ensure_dir
+from helpers.draw import choose, sqrt, Draw, join, dirname, realpath, print_table, beta_gamma, M_E, e2p, file_exists, constants, interpolate_y, ensure_dir
 from numpy import genfromtxt, array, pi, concatenate, savetxt, zeros, ones
 import periodictable as pt
 from src.particle import Muon
@@ -9,7 +9,7 @@ Dir = dirname(dirname(realpath(__file__)))
 
 class Element(object):
 
-    def __init__(self, el: pt.core.Element, rad_length, e_eh=1., density=None, name=None, symbol=None):
+    def __init__(self, el: pt.core.Element, rad_length, e_eh=1., s_eh=1., density=None, name=None, symbol=None):
         self.Name = choose(name, el.name.title())
         self.Symbol = choose(symbol, el.symbol)
         self.Z = el.number
@@ -22,6 +22,7 @@ class Element(object):
         self.Density = choose(density, el.density)
         self.EPlasma = sqrt(self.Density * self.Z / self.A) * 28.816 * 1e-6  # MeV
         self.EEH = e_eh  # eV
+        self.SEH = s_eh  # eV/um
         self.Draw = Draw(join(Dir, 'main.ini'))
 
         # STRAGGLING
@@ -122,8 +123,8 @@ class Element(object):
     # -------------------------------------
 
 
-Si = Element(pt.silicon, 21.82, e_eh=3.68)
-Dia = Element(pt.carbon, 42.70, e_eh=13.3, density=3.52, name='Diamond', symbol='Dia')
+Si = Element(pt.silicon, 21.82, e_eh=3.68, s_eh=80)
+Dia = Element(pt.carbon, 42.70, e_eh=13.2, s_eh=37, density=3.52, name='Diamond', symbol='Dia')
 Cu = Element(pt.copper, 12.86)
 Ar = Element(pt.argon, 19.55, density=1.662e-3)
 Pb = Element(pt.lead, 6.37)
