@@ -55,15 +55,22 @@ def get_losses(p, el, t=500):
     return array([BetheBloch(part, el, t, abst=True)(p) for part in [Pion, Muon, Positron, Proton]])
 
 
-def print_energies(p, el: Element, t=500, table=False):
+def print_eloss(p, latex=False, eh=False):
     particles = [Pion, Muon, Positron, Proton]
-    values = []
-    for part in particles:
-        e = BetheBloch(part, el, t, abst=True)(p)
-        values.append(['{:1.0f}'.format(e), '{:1.0f}'.format(round(e * 1000 / el.EEH, -2))])
-        info('Energy loss of {} MeV {}s in {} μm {}: {:1.0f} keV ({:1.0f} eh-pairs)'.format(p, part.Name, t, el.Name, e, round(e * 1000 / el.EEH, -2)))
-    if table:
-        print(make_latex_table_row(concatenate(array(values).T)))
+    els = [(Dia, 500), (Si, 300), (Si, 100)]
+    rows = [[] for _ in range(len(els))]
+    for i, (el, t) in enumerate(els):
+        e_mip = BetheBloch(Muon, el, t=t, abst=True).get_minimum()[0]
+        rows[i] = [el.Name, str(t), '{:1.1f}'.format(el.SEH * t / 1000) if eh else '{:1.0f}'.format(e_mip)]
+        for part in particles:
+            e = BetheBloch(part, el, t, abst=True)(p)
+            rows[i].append('{:1.1f}'.format(e / e_mip * el.SEH * t / 1000) if eh else '{:1.2f}'.format(e / e_mip))
+    if not latex:
+        header = ['Material', 'Thickness', 'MIP'] + [p.Name for p in particles]
+        print_table(rows, header)
+    else:
+        for row in rows:
+            print(make_latex_table_row(row, endl=False))
 
 
 def draw_straggling(part=Pion, el=Dia, p=260, t=500, n=1e6, bin_size=1):

@@ -294,8 +294,8 @@ def binned_stats(x, values, f, bins):
     return array([f(v) for v in split(values, cumsum(histogram(x, bins)[0].astype('i'))[:-1])])
 
 
-def make_latex_table_row(row, hline=False):
-    return '{0}\\\\{1}\n'.format('\t& '.join(row), '\\hline' if hline else '')
+def make_latex_table_row(row, hline=False, endl=True):
+    return '{}\\\\{}{}'.format('\t& '.join(row), '\\hline' if hline else '', '\n' if endl else '')
 
 
 def make_latex_table(header, cols, endline=False):
