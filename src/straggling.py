@@ -5,6 +5,7 @@ from helpers.draw import *
 from src.element import Element, hbar
 from src.eloss import LandauVavilovBichsel
 from src.particle import Particle
+from ROOT import gRandom
 
 Dir = dirname(dirname(realpath(__file__)))
 MetaDir = join(Dir, 'data', 'meta')
@@ -175,19 +176,24 @@ class Straggling(object):
 
 class Landau(object):
 
+    XOff = -.22278
+
     def __init__(self, part: Particle, el: Element, p=260, t=500):
 
-        x_off = .22278
         bg = beta_gamma(p, part.M)
         b2 = bg2b(bg) ** 2
         eloss = LandauVavilovBichsel(part, el, t)
         self.Xi = eloss.get_xi(bg) * 1e3  # [MeV] -> [keV]
         self.C = -log(self.Xi * 2 * M_E * bg ** 2 / el.IE ** 2 * 1e-3) + b2 - 1 + euler_gamma + eloss.density_correction(bg)
-        self.MPV = self.Xi * -(self.C + x_off)
-        self.ROOTMPV = x_off * self.Xi + self.MPV
+        self.MPV = self.Xi * (Landau.XOff - self.C)
+        self.Location = Landau.mpv2loc(self.MPV, self.Xi)
         self.Title = 'Energy Loss of {}MeV {}s in {}#mum {}'.format(p, part.Name, t, el.Name)
 
         self.Draw = Draw(join(Dir, 'main.ini'))
+        self.F = Draw.make_f('Landau', 'landau', -50, self.MPV * 5, [1, self.Location, self.Xi])
+
+    def __call__(self, x):
+        return self.f(x)
 
     def lamda(self, x):
         return x / self.Xi + self.C
@@ -199,9 +205,17 @@ class Landau(object):
     def f_approx(x):
         return 1 / sqrt(2 * pi) * exp((abs(x) - 1) / 2 - exp(abs(x) - 1))
 
+    @staticmethod
+    def loc2mpv(loc, width):
+        return loc + Landau.XOff * width
+
+    @staticmethod
+    def mpv2loc(mpv, width):
+        return mpv - Landau.XOff * width
+
     def draw(self, xmin=None, xmax=None, same=False):
         xmin, xmax = choose(xmin, self.MPV - 3 * self.Xi), choose(xmax, self.MPV + 15 * self.Xi)
-        f = Draw.make_f('Landau', 'landau', xmin, xmax, [1, self.ROOTMPV, self.Xi], npx=500, title=self.Title, x_tit='Energy Loss [keV]', y_tit='Probability')
+        f = Draw.make_f('Landau', 'landau', xmin, xmax, [1, self.Location, self.Xi], npx=500, title=self.Title, x_tit='Energy Loss [keV]', y_tit='Probability')
         f.Draw('same') if same else self.Draw(f)
         return f
 
@@ -214,3 +228,31 @@ class Landau(object):
     def draw_real(self):
         x = linspace(self.MPV - 3 * self.Xi, self.MPV + 10 * self.Xi, 100)
         self.Draw.graph(x, [self.f(i) for i in x], x_tit='Energy Loss [keV]', y_tit='Probability', draw_opt='al', lm=.12, y_off=1.6, title=self.Title)
+
+    def get_mean(self, cut_off, n=1000):
+        x = linspace(-50, cut_off, n)
+        return mean_sigma(x, [self.F(ix) for ix in x])[0]
+
+    def rpv(self, n=1e5):
+        return array([gRandom.Landau(self.Location, self.Xi) for _ in range(int(n))])
+
+    def get_mean_scale(self, n=1e5, cut_off=410, show=False):
+        x = self.rpv(n)
+        s = linspace(.02, 2, 50)
+        m = array([mean(v[v < cut_off]) for v in [x * i for i in s]])
+        g = self.Draw.graph(m[m < cut_off - 100], (self.MPV * s)[m < cut_off - 100], draw_opt='al', show=show)
+        return FitRes(g.Fit('pol2', 'qs'))
+
+    def get_r(self):
+        return self.Xi / self.MPV
+
+
+def draw_mean_vs_t(n=10, cut_off=2.3 * 410, tmax=500):
+    x = linspace(10, tmax, n)
+    from src.particle import Pion
+    from src.element import Dia
+    landaus = [Landau(Pion, Dia, t=t) for t in x]
+    # y = [lan.get_mean(cut_off) for lan in landaus]
+    m, w, mp = array([[lan.get_mean(cut_off), lan.Xi, lan.MPV] for lan in landaus]).T
+    y = w / mp
+    Draw(join(Dir, 'main.ini')).graph(x, y, 'Mean vs. Thickness', x_tit='Thicknes [#mum]', y_tit='Mean Pulse Height [keV]')
