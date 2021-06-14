@@ -466,21 +466,23 @@ class Draw(object):
         return Draw.add(h)
 
     @staticmethod
-    def make_f(name, function, xmin=0, xmax=1, pars=None, npx=None, *args, **kwargs):
-        f = TF1(name, function, xmin, xmax)
+    def make_f(name, function, xmin=0, xmax=1, pars=None, limits=None, fix=None, npx=None, **kwargs):
+        f = TF1(choose(name, Draw.get_name('f')), function, xmin, xmax)
         f.SetParameters(*pars) if pars is not None else do_nothing()
+        [f.SetParLimits(i, *lim) for i, lim in enumerate(limits)] if limits else do_nothing()
+        [f.FixParameter(i, value) for i, value in enumerate(make_list(fix))] if fix is not None else do_nothing()
         do(f.SetNpx, npx)
-        format_histo(f, *args, **kwargs)
+        format_histo(f, **kwargs)
         return Draw.add(f)
 
     @staticmethod
-    def make_tf1(name, f, xmin=0, xmax=1, color=None, w=None, style=None, title=None, *args, **kwargs):
+    def make_tf1(name, f, xmin=0, xmax=1, color=None, w=None, style=None, title=None, npars=0, *args, **kwargs):
         def tmp(x, pars):
             _ = pars
             return f(x[0], pars, *args, **kwargs) if 'pars' in signature(f).parameters else f(x[0], *args, **kwargs)
 
         Draw.add(tmp)
-        f0 = TF1(name, tmp, xmin, xmax)
+        f0 = TF1(name, tmp, xmin, xmax, npars)
         do([f0.SetLineColor, f0.SetLineWidth, f0.SetLineStyle], [color, w, style])
         do(f0.SetTitle, title)
         return Draw.add(f0)
