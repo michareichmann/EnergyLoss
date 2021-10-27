@@ -1,4 +1,4 @@
-from helpers.draw import choose, sqrt, Draw, join, dirname, realpath, print_table, beta_gamma, M_E, e2p, file_exists, constants, interpolate_y, ensure_dir
+from helpers.draw import choose, sqrt, Draw, join, dirname, realpath, print_table, pm2bg, M_E, e2p, file_exists, constants, interpolate_y, ensure_dir
 from numpy import genfromtxt, array, pi, concatenate, savetxt, zeros, ones
 import periodictable as pt
 from src.particle import Muon
@@ -16,10 +16,10 @@ class Element(object):
         self.A = el.mass
         self.DataFile = join(Dir, 'data', 'muons', '{}.txt'.format(self.Name))
         self.EDataFile = join(Dir, 'data', 'electrons', '{}.txt'.format(self.Name))
-        self.X0 = rad_length
+        self.X0 = rad_length  # g/cm²
         self.a, self.k, self.x0, self.x1, self.IE, self.C, self.D0 = genfromtxt(self.DataFile, skip_header=4, max_rows=1)
         self.IE *= 1e-6  # convert to MeV
-        self.Density = choose(density, el.density)
+        self.Density = choose(density, el.density)  # g/cm³
         self.EPlasma = sqrt(self.Density * self.Z / self.A) * 28.816 * 1e-6  # MeV
         self.EEH = e_eh  # eV
         self.SEH = s_eh  # eV/um
@@ -38,11 +38,11 @@ class Element(object):
     # region GET
     def get_data(self, col, linear, mass, t):
         x, y = genfromtxt(self.DataFile, usecols=[0, col], skip_header=10).T
-        return array([beta_gamma(x, Muon.M), y * (1 if mass else self.Density if linear else t * self.Density)])
+        return array([pm2bg(x, Muon.M), y * (1 if mass else self.Density if linear else t * self.Density)])
 
     def get_e_data(self, col, linear, mass, t):
         x, y = genfromtxt(self.EDataFile, usecols=[0, col], skip_header=8).T
-        return array([beta_gamma(e2p(x, M_E), M_E), y * (1 if mass else self.Density if linear else t * self.Density)])
+        return array([pm2bg(e2p(x, M_E), M_E), y * (1 if mass else self.Density if linear else t * self.Density)])
 
     def get_refraction_data(self):
         f = join(Dir, 'data', 'photo', '{}.txt'.format(self.Name))
