@@ -2,6 +2,7 @@
 
 from src.eloss import *
 from src.straggling import *
+from src.scattering import *
 
 ddraw = Draw(join(Dir, 'main.ini'))
 
@@ -48,7 +49,7 @@ def draw_ep(el=Dia, t=500, abst=False, mass=False, logy=False, y_range=None, xmi
 
 
 def beta_gamma_range():
-    info('Beta Gamma Range: {:1.1f} ~ {:1.1f}'.format(beta_gamma(260, M_PI), beta_gamma(1.2e5, M_PI)))
+    info('Beta Gamma Range: {:1.1f} ~ {:1.1f}'.format(pm2bg(260, M_PI), pm2bg(1.2e5, M_PI)))
 
 
 def get_losses(p, el, t=500):
@@ -77,6 +78,12 @@ def draw_straggling(part=Pion, el=Dia, p=260, t=500, n=1e6, bin_size=1):
     g = Straggling(part, el, p, t).draw(n, bin_size=bin_size)
     f = Landau(part, el, p, t).draw_same(max(get_graph_y(g, err=False)))
     Draw.legend([g, f], ['Straggling', 'Landau'], 'l')
+
+
+def draw_scattering(part=Electron, el=Dia, t=500, ymax=None, xmin=100, xmax=1e5, **dkw):
+    s = Scattering(part, el, t)
+    s.draw(show=False)
+    return s.draw(ymax, xmin, xmax, **dkw).F
 
 
 if __name__ == '__main__':
