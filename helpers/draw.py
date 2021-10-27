@@ -42,6 +42,7 @@ class Draw(object):
     Legend = False
     FillColor = 871
     Font = 42
+    Show = True
 
     DefaultStats = {'x2': None, 'y2': None, 'h': None, 'w': .3, 'entries': False, 'm': False, 'rms': False, 'all_stat': True, 'fit': False, 'center_x': False, 'center_y': False, 'form': None}
     Stats = {}
@@ -61,8 +62,19 @@ class Draw(object):
 
         Draw.setup()
 
-    def __call__(self, *args, **kwargs):
-        return Draw.histo(*args, **kwargs)
+        self.Dic = {'TH1F': self.distribution, 'TH1I': self.distribution, 'TH1D': self.distribution,
+                    'TH1': self.function,
+                    'TF1': self.function,
+                    'TGraph': self.graph, 'TGraphErrors': self.graph, 'TGraphAsymmErrors': self.graph,
+                    'TProfile': self.profile,
+                    'TH2I': self.histo_2d, 'TH2D': self.histo_2d, 'TH2F': self.histo_2d,
+                    'TProfile2D': self.prof2d,
+                    'TMultiGraph': self.multigraph}
+
+    def __call__(self, th, *args, **kwargs):
+        if th.ClassName() in self.Dic:
+            return self.Dic[th.ClassName()](th, *args, **kwargs)
+        return Draw.histo(th, *args, **kwargs)
 
     @staticmethod
     def add(*args):
@@ -94,6 +106,9 @@ class Draw(object):
         do(c.SetBottomMargin, None if round(c.GetBottomMargin(), 1) != .1 else (.17 if b is None else b) - (.07 if not Draw.Legend else 0))
         do(c.SetTopMargin, None if round(c.GetTopMargin(), 1) != .1 else max((.1 if t is None else t) - (0 if Draw.Title else .07), 0))
 
+    @staticmethod
+    def set_show(status=ON):
+        set_root_output(status and Draw.Show)
     # endregion SET
     # ----------------------------------------
 
@@ -339,53 +354,71 @@ class Draw(object):
 
     @staticmethod
     def histo(th, show=True, lm=None, rm=None, bm=None, tm=None, m=None, draw_opt=None, w=1, h=1, logx=None, logy=None, logz=None, grid=None, gridy=None, gridx=None, phi=None, theta=None,
-              leg=None, canvas=None, sumw2=None, stats=False):
+              leg=None, canvas=None, sumw2=None, stats=False, **kwargs):
         w += .16 if not Draw.Title and w == 1 else 0  # rectify if there is no title
         th.Sumw2(sumw2) if hasattr(th, 'Sumw2') and sumw2 is not None else do_nothing()
-        set_root_output(show)
+        Draw.set_show(show)
         c = Draw.canvas(th.GetTitle().split(';')[0], None, None, w, h, logx, logy, logz, gridx or grid, gridy or grid, show=show) if canvas is None else canvas
         Draw.set_pad_margins(c, *[lm, rm, bm, tm] if m is None else m)
         do([c.SetLogx, c.SetLogy, c.SetLogz], [logx, logy, logz])
         do([c.SetGridx, c.SetGridy], [gridx or grid, gridy or grid])
         do([c.SetPhi, c.SetTheta], [phi, theta])
-        th.Draw(draw_opt if draw_opt is not None else 'ap' if is_graph(th) else '')
+        th.Draw(draw_opt if draw_opt is not None else 'ap' if is_graph(th) else 'hist' if 'TH' in th.ClassName() else '')
         if leg is not None:
             update_canvas()
             for i_leg in make_list(leg):
                 i_leg.Draw('same')
-        set_root_output(True)
+        Draw.set_show(True)
         if stats or stats is None:
-            format_statbox(th, **Draw.Stats if stats else Draw.DefaultStats)
+            for i in (th.GetListOfGraphs() if 'Multi' in th.ClassName() else [th]):
+                format_statbox(i, **Draw.Stats if stats else Draw.DefaultStats, c=canvas)
         return Draw.add(c, th, leg)[0]
 
-    def distribution(self, values, binning=None, title='', thresh=.02, lm=None, rm=None, show=True, logy=None, w=1, h=1, stats=None, **kwargs):
-        values = make_darray(values)
-        kwargs['fill_color'] = Draw.FillColor if 'fill_color' not in kwargs else kwargs['fill_color']
-        kwargs['y_off'] = 1.4 if 'y_off' not in kwargs else kwargs['y_off']
-        kwargs['y_tit'] = 'Number of Entries' if 'y_tit' not in kwargs else kwargs['y_tit']
-        th = TH1F(Draw.get_name('h'), title, *choose(binning, find_bins, values=values, thresh=thresh))
-        fill_hist(th, values)
-        format_histo(th, **kwargs)
-        self.histo(th, show=show, lm=lm, rm=rm, logy=logy, w=w, h=h, stats=stats)
+    @staticmethod
+    def mode(m=1, **kwargs):
+        d = {1: {'tit_size': .05, 'lab_size': .045, 'y_off': 1.35},
+             2: {'w': 1.5, 'h': .75, 'tit_size': .06, 'lab_size': .05, 'y_off': .7, 'lm': .08, 'bm': .15},
+             3: {'w': 1.5, 'h': .5, 'tit_size': .07, 'lab_size': .06, 'y_off': .5, 'lm': .073, 'bm': .225, 'rm': .03, 'x_tit': 'Time [ns]', 'y_tit': 'Signal [mV]', 'markersize': .5},
+             4: {'w': 2, 'h': 1.2, 'tit_size': .05, 'lab_size': .05, 'lm': .1, 'bm': .4, 'x_tit': '#beta#gamma', 'markersize': .5, 'x_off': 1.3, 'y_off': 1,
+                 'center_tit': True, 'logx': True, 'grid': True}
+             }[m]
+        return prep_kw(kwargs, **d)
+
+    def distribution(self, x, binning=None, title='', q=.02, lf=.2, rf=.2, **kwargs):
+        if hasattr(x, 'GetName'):
+            th = x
+        else:
+            th = TH1F(Draw.get_name('h'), title, *choose(binning, find_bins, values=x, q=q, lfac=lf, rfac=rf))
+            fill_hist(th, x)
+        format_histo(th, **prep_kw(kwargs, **Draw.mode(), fill_color=Draw.FillColor, y_tit='Number of Entries'))
+        self.histo(th, **prep_kw(kwargs, stats=None))
         return th
 
-    def graph(self, x, y, title='', c=None, lm=None, rm=None, bm=None, tm=None, w=1, h=1, show=True, draw_opt=None, gridy=None, logx=False, logy=False, grid=None, **kwargs):
-        g = Draw.make_tgrapherrors(x, y)
-        kwargs['y_off'] = 1.4 if 'y_off' not in kwargs else kwargs['y_off']
-        kwargs['fill_color'] = Draw.FillColor if 'fill_color' not in kwargs else kwargs['fill_color']
-        format_histo(g, title=title, **kwargs)
-        self.histo(g, show=show, lm=lm, rm=rm, bm=bm, tm=tm, w=w, h=h, gridy=gridy, draw_opt=draw_opt, logx=logx, logy=logy, canvas=c, grid=grid)
+    def function(self, f, title='', c=None, **kwargs):
+        c = get_last_canvas() if 'draw_opt' in kwargs and 'same' in kwargs['draw_opt'] and c is None else c
+        self.histo(f, canvas=c, **prep_kw(kwargs))
+        sleep(.1)
+        format_histo(f, title=title, draw_first=True, **prep_kw(kwargs, **Draw.mode()))
+        return f
+
+    def graph(self, x, y=None, title='', bm=None, show=True, bin_labels=None, **kwargs):
+        g = x if y is None else Draw.make_tgrapherrors(x, y)
+        format_histo(g, title=title, **prep_kw(kwargs, **Draw.mode(), fill_color=Draw.FillColor))
+        set_bin_labels(g, bin_labels)
+        self.histo(g, show=show, bm=choose(bm, .24 if bin_labels else None), **kwargs)
         return g
 
-    def profile(self, x, y, binning=None, title='', thresh=.02, lm=None, rm=None, w=1, h=1, show=True, draw_opt=None, logz=None, stats=None, **kwargs):
-        x, y = array(x, dtype='d'), array(y, dtype='d')
-        kwargs['fill_color'] = Draw.FillColor if 'fill_color' not in kwargs else kwargs['fill_color']
-        kwargs['y_off'] = 1.4 if 'y_off' not in kwargs else kwargs['y_off']
-        kwargs['stats'] = stats
-        p = TProfile(Draw.get_name('p'), title, *choose(binning, find_bins, values=x, thresh=thresh))
-        fill_hist(p, x, y)
-        format_histo(p, **kwargs)
-        self.histo(p, show=show, lm=lm, rm=rm, w=w, h=h, draw_opt=draw_opt, logz=logz, stats=stats)
+    def profile(self, x, y=None, binning=None, title='', thresh=.02, graph=False, **kwargs):
+        if y is None:
+            p = x
+        else:
+            x, y = array(x, dtype='d'), array(y, dtype='d')
+            p = TProfile(Draw.get_name('p'), title, *choose(binning, find_bins, values=x, q=thresh))
+            fill_hist(p, x, y)
+        p = self.make_graph_from_profile(p) if graph else p
+        set_statbox(entries=True, w=.25)
+        format_histo(p, **prep_kw(kwargs, **Draw.mode(), fill_color=Draw.FillColor))
+        self.histo(p, **prep_kw(kwargs, stats=True))
         return p
 
     def prof2d(self, x, y, zz, binning=None, title='', lm=None, rm=.15, bm=None, w=1, h=1, show=True, phi=None, theta=None, draw_opt='colz', stats=None, **kwargs):
@@ -476,15 +509,15 @@ class Draw(object):
         return Draw.add(f)
 
     @staticmethod
-    def make_tf1(name, f, xmin=0, xmax=1, color=None, w=None, style=None, title=None, npars=0, *args, **kwargs):
+    def make_tf1(name, f, xmin=0, xmax=1, color=None, w=None, style=None, title='', npx=None, *args, **kwargs):
         def tmp(x, pars):
             _ = pars
             return f(x[0], pars, *args, **kwargs) if 'pars' in signature(f).parameters else f(x[0], *args, **kwargs)
 
         Draw.add(tmp)
-        f0 = TF1(name, tmp, xmin, xmax, npars)
-        do([f0.SetLineColor, f0.SetLineWidth, f0.SetLineStyle], [color, w, style])
-        do(f0.SetTitle, title)
+        f0 = TF1(choose(name, Draw.get_name('f')), tmp, xmin, xmax)
+        do(f0.SetNpx, npx)
+        format_histo(f0, title=title, line_color=color, line_style=style, lw=w)
         return Draw.add(f0)
 
     @staticmethod
@@ -541,18 +574,19 @@ class Draw(object):
 def format_histo(histo, name=None, title=None, x_tit=None, y_tit=None, z_tit=None, marker=None, color=None, line_color=None, line_style=None, markersize=None, x_off=None, y_off=None, z_off=None,
                  lw=None, fill_color=None, fill_style=None, stats=None, tit_size=None, lab_size=None, l_off_y=None, l_off_x=None, draw_first=False, x_range=None, y_range=None, z_range=None,
                  sumw2=None, do_marker=True, style=None, ndivx=None, ndivy=None, ncont=None, tick_size=None, t_ax_off=None, center_y=False, center_x=False, yax_col=None, normalise=None, pal=None,
-                 rebin=None, y_ticks=None, x_ticks=None, z_ticks=None, opacity=None, center_tit=None):
+                 rebin=None, y_ticks=None, x_ticks=None, z_ticks=None, opacity=None, center_tit=None, **kwargs):
+    _ = kwargs
     h = histo
     if draw_first:
-        set_root_output(False)
-        h.Draw('nostack' if h.ClassName() == 'THStack' else 'a')
-        set_root_output(True)
+        Draw.set_show(False)
+        h.Draw('nostack' if h.ClassName() == 'THStack' else 'a' if 'Graph' in h.ClassName() else '')
+        sleep(.1)
+        Draw.set_show(True)
     do(h.SetTitle, title)
     do(h.SetName, name)
-    do(set_palette, pal)
+    set_palette(*make_list(pal) if pal is not None else [])
     if normalise is not None:
-        y_tit = y_tit.replace('Number', 'Percentage') if y_tit is not None else y_tit
-        h.Sumw2(True)
+        y_tit = 'Frequency' if 'Number' in choose(y_tit, h.GetYaxis().GetTitle()) else choose(y_tit, h.GetYaxis().GetTitle())
         normalise_histo(h)
     try:
         do(h.SetStats, stats)
@@ -607,10 +641,10 @@ def set_entries():
 def format_statbox(th, x2=None, y2=None, h=None, w=.3, entries=False, m=False, rms=False, all_stat=False, fit=False, center_x=False, center_y=False, form=None, c=None):
     c = choose(c, get_last_canvas(warn=False))
     update_canvas(c)
-    f = next((o for o in th.GetListOfFunctions() if 'TF1' in o.ClassName()), None)
+    f = None if 'TF1' in th.ClassName() else next((o for o in th.GetListOfFunctions() if 'TF1' in o.ClassName()), None)
     if 'TGraph' in th.ClassName() and fit and f:
         gStyle.SetOptFit(True)
-    p = next((o for o in th.GetListOfFunctions() if 'Pave' in o.ClassName()), None)
+    p = None if 'TF1' in th.ClassName() else next((o for o in th.GetListOfFunctions() if 'Pave' in o.ClassName()), None)
     if p is not None:
         r = c.GetWindowHeight() / c.GetWindowWidth()
         x2, y2 = choose(x2, 1 - c.GetRightMargin() - r * .01), choose(y2, 1 - c.GetTopMargin() - .01 / r)
@@ -858,8 +892,8 @@ def markers(i):
     return ((list(range(20, 24)) + [29, 33, 34]) * 2)[i]
 
 
-def set_palette(pal):
-    gStyle.SetPalette(pal)
+def set_palette(*pal):
+    gStyle.SetPalette(*pal) if pal else do_nothing()
 
 
 def is_graph(h):
