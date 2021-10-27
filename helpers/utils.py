@@ -41,6 +41,9 @@ M_MU = constants.physical_constants['muon mass'][0] / constants.e * constants.c*
 M_E = constants.m_e / constants.e * constants.c**2 / 1e6
 M_P = constants.m_p / constants.e * constants.c**2 / 1e6
 TAU_PI = 26.033  # ns
+K = 2 * constants.pi * constants.Avogadro * constants.physical_constants['classical electron radius'][0] ** 2 * M_E * 1e4  # MeV cm^2/mol
+
+Dir = dirname(dirname(realpath(__file__)))
 
 
 # ==============================================
@@ -989,9 +992,8 @@ def calc_speed(p, m):
     return 1 / sqrt(1 + m * m / (p * p))
 
 
-def beta_gamma(p, m):
-    v = calc_speed(p, m)
-    return lorentz_factor(v) * v
+def pm2bg(p, m):
+    return p / m
 
 
 def bg2b(bg):
@@ -1024,6 +1026,7 @@ def lorentz_factor(v):
 
 def momentum(m, v):
     return m * v * lorentz_factor(v)
+
 
 def decay_ratio(p, m, d, tau):
     return exp(-d * m / (tau * 1e-9 * p * constants.c))
@@ -1091,6 +1094,14 @@ def parallelise_instance(instances, method, args, timeout=60 * 60):
 def call_it(instance, name, *args, **kwargs):
     """indirect caller for instance methods and multiprocessing"""
     return getattr(instance, name)(*args, **kwargs)
+
+
+def prep_kw(dic, **default):
+    d = deepcopy(dic)
+    for kw, value in default.items():
+        if kw not in d:
+            d[kw] = value
+    return d
 
 
 def do_nothing():
