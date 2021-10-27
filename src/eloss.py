@@ -4,9 +4,6 @@ from typing import Any
 from src.element import *
 from src.particle import *
 
-K = 2 * constants.pi * constants.Avogadro * constants.physical_constants['classical electron radius'][0] ** 2 * M_E * 1e4  # MeV cm^2/mol
-Dir = dirname(dirname(realpath(__file__)))
-
 
 class Eloss(object):
 
@@ -76,6 +73,14 @@ class Eloss(object):
         else:
             return el.D0 * 10 ** (2 * (x - el.x0))
 
+    def e_correction(self, bg):
+        b, g = bg2b(bg), bg2g(bg)
+        if self.P.Name == 'Electron':
+            return 1 + b * b - (2 * g - 1) / (g * g) * log(2) + ((g - 1) / g) ** 2 / 8
+        elif self.P.Name == 'Positron':
+            return log(2) + 2 * b * b - b * b / 12 * (23 + 14 / (g + 1) + 10 / (g + 1) ** 2 + 4 / (g + 1) ** 3)
+        return 0
+
     def get_minimum(self, p=None, el=None):
         self.reload(p, el)
         emin, bg = self.F.GetMinimum(.1, 1e3), self.F.GetMinimumX(.1, 1e3)
@@ -114,7 +119,7 @@ class LandauVavilovBichsel(Eloss):
     def f(self, bg):
         xi = self.get_xi(bg)
         fac = 1 / self.X if self.Mass else 1 / self.T if self.Linear else 1000
-        return xi * (log(2 * M_E * bg ** 2 / self.El.IE) + log(xi / self.El.IE) + .2 - calc_speed(bg * self.P.M, self.P.M) ** 2 - self.density_correction(bg)) * fac
+        return xi * (log(2 * M_E * bg ** 2 / self.El.IE) + log(xi / self.El.IE) + .2 - calc_speed(bg * self.P.M, self.P.M) ** 2 - self.density_correction(bg) + self.e_correction(bg)) * fac
 
     def get_xi(self, bg):
         return self.C * self.X / calc_speed(bg * self.P.M, self.P.M) ** 2
@@ -151,22 +156,14 @@ class BetheBloch(Eloss):
         d = self.density_correction(bg) if self.DensityCorr else 0
         w_max = self.get_w_max(bg)
         w_cut = w_max if self.WCut is None else min(self.WCut, w_max)
-        return self.get_lin_fac() * self.C / (b * b) * (log(2 * M_E * bg * bg * w_cut / (self.El.IE * self.El.IE)) - b * b * (1 + w_cut / w_max) - d + self.get_correction(bg))
-
-    def get_correction(self, bg):
-        b, g = bg2b(bg), bg2g(bg)
-        if self.P.Name == 'Electron':
-            return 1 + b * b - (2 * g - 1) / (g * g) * log(2) + ((g - 1) / g) ** 2 / 8
-        elif self.P.Name == 'Positron':
-            return log(2) + 2 * b * b - b * b / 12 * (23 + 14 / (g + 1) + 10 / (g + 1) ** 2 + 4 / (g + 1) ** 3)
-        return 0
+        return self.get_lin_fac() * self.C / (b * b) * (log(2 * M_E * bg * bg * w_cut / (self.El.IE * self.El.IE)) - b * b * (1 + w_cut / w_max) - d + self.e_correction(bg))
 
     def get_w_max(self, bg):
         return .5 * M_E * (bg2g(bg) - 1) if self.P.Name == 'Electron' else M_E * (bg2g(bg) - 1) if self.P.Name == 'Positron' else super(BetheBloch, self).get_w_max(bg)
 
     def delta_rays(self, wmin, p):
         b0 = calc_speed(p, self.P.M)
-        wmax = self.get_w_max(beta_gamma(p, self.P.M))
+        wmax = self.get_w_max(pm2bg(p, self.P.M))
         return self.C / b0 ** 2 * ((1 / wmin - 1 / wmax) - b0 ** 2 / wmax * log(wmax / wmin)) * self.X
 
     def draw_delta_rays(self, p, wmin=1e-3, y_range=None):
