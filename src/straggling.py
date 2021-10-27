@@ -7,7 +7,6 @@ from src.eloss import LandauVavilovBichsel
 from src.particle import Particle
 from ROOT import gRandom
 
-Dir = dirname(dirname(realpath(__file__)))
 MetaDir = join(Dir, 'data', 'meta')
 
 
@@ -22,7 +21,7 @@ class Straggling(object):
         self.PBar = PBar()
 
         # constants
-        self.BG = beta_gamma(p, part.M)
+        self.BG = pm2bg(p, part.M)
         self.B2 = bg2b(self.BG)
         self.T = t
         self.KR = 2 * pi * constants.physical_constants['classical electron radius'][0] ** 2 * M_E * 1e6 * 1e4  # ev cm2
@@ -180,7 +179,7 @@ class Landau(object):
 
     def __init__(self, part: Particle, el: Element, p=260, t=500):
 
-        bg = beta_gamma(p, part.M)
+        bg = pm2bg(p, part.M)
         b2 = bg2b(bg) ** 2
         eloss = LandauVavilovBichsel(part, el, t)
         self.Xi = eloss.get_xi(bg) * 1e3  # [MeV] -> [keV]
