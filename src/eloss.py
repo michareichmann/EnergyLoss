@@ -90,6 +90,9 @@ class Eloss(object):
     def get_emin(self):
         return self.get_minimum()[0]
 
+    def eh_pairs(self, p):
+        return self.F(p / self.P.M) / self.El.EEH
+
     def get_w_max(self, bg):
         """returns maximum energy transfer in a single collsion with a free electron in [MeV]"""
         return 2 * M_E * bg ** 2 / (1 + 2 * bg / bg2b(bg) * M_E / self.P.M + (M_E / self.P.M) ** 2)
