@@ -212,10 +212,10 @@ class Landau(object):
     def mpv2loc(mpv, width):
         return mpv - Landau.XOff * width
 
-    def draw(self, xmin=None, xmax=None, same=False):
+    def draw(self, xmin=None, xmax=None, same=False, **dkw):
         xmin, xmax = choose(xmin, self.MPV - 3 * self.Xi), choose(xmax, self.MPV + 15 * self.Xi)
-        f = Draw.make_f('Landau', 'landau', xmin, xmax, [1, self.Location, self.Xi], npx=500, title=self.Title, x_tit='Energy Loss [keV]', y_tit='Probability')
-        f.Draw('same') if same else self.Draw(f)
+        f = Draw.make_f('Landau', 'landau', xmin, xmax, [1, self.Location, self.Xi], **prep_kw(dkw, npx=500, title=self.Title, x_tit='Energy Loss [keV]', y_tit='Probability'))
+        f.Draw('same') if same else self.Draw(f, **prep_kw(dkw))
         return f
 
     def draw_same(self, scale=1):
