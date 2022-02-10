@@ -81,14 +81,18 @@ class Eloss(object):
             return log(2) + 2 * b * b - b * b / 12 * (23 + 14 / (g + 1) + 10 / (g + 1) ** 2 + 4 / (g + 1) ** 3)
         return 0
 
-    def get_minimum(self, p=None, el=None):
+    def get_minimum(self, p=None, el=None, prnt=True):
         self.reload(p, el)
         emin, bg = self.F.GetMinimum(.1, 1e3), self.F.GetMinimumX(.1, 1e3)
-        info('Minimum: {:1.2f} Mev/cm at {:1.0f} MeV (betagamma = {:1.2f})'.format(emin, bg * self.P.M, bg))
+        info('Minimum: {:1.2f} Mev/cm at {:1.0f} MeV (betagamma = {:1.2f})'.format(emin, bg * self.P.M, bg), prnt=prnt)
         return emin, bg * self.P.M
 
     def get_emin(self):
         return self.get_minimum()[0]
+
+    @property
+    def pmin(self):
+        return self.get_minimum(prnt=False)[1]
 
     def eh_pairs(self, p):
         return self.F(p / self.P.M) / self.El.EEH
@@ -182,7 +186,7 @@ class Bremsstrahlung(Eloss):
         self.N = constants.physical_constants['Avogadro constant'][0] * self.El.Density / self.El.A
         self.F0 = self.N * 1e4 * self.El.Z ** 2 * constants.physical_constants['classical electron radius'][0] ** 2 * constants.alpha / self.El.Density * self.get_lin_fac()
 
-    def get_minimum(self, p=None, el=None):
+    def get_minimum(self, **kw):
         return 1, 1
 
     def make_f(self):
