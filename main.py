@@ -14,6 +14,13 @@ def draw_dens_correction(p, el, y_range=None):
     Draw.legend([f.F, f0.F], ['Bethe Bloch', 'without #delta'], 'l', x2=.96, w=.2, scale=1.4)
 
 
+def draw_density_correction(p: Particle = Pion, el: Element = Dia, xmin=.1, xmax=1e3, **dkw):
+    b = BetheBloch(p, el)
+    f = Draw.make_tf1('dens', b.density_correction, xmin, xmax)
+    ddraw(f, **prep_kw(dkw, x_tit='#beta#gamma', y_tit='Density-Effect Correction', logx=True))
+    [Draw.vertical_line(10 ** x, 0, 1e3) for x in [el.x0, el.x1]]
+
+
 def draw_restricted(p, el, w_cut: Any = 2, t=500, abst=False, mass=False, y_range=None):
     b0 = BetheBloch(p, el, abst=abst, mass=mass)
     n = 2 + make_list(w_cut).size
@@ -56,15 +63,16 @@ def get_losses(p, el, t=500):
     return array([BetheBloch(part, el, t, abst=True)(p) for part in [Pion, Muon, Positron, Proton]])
 
 
-def print_eloss(p, latex=False, eh=False):
+def print_eloss(p, latex=False, eh=False, mpv=False):
     particles = [Pion, Muon, Positron, Proton]
     els = [(Dia, 500), (Si, 300), (Si, 100)]
     rows = [[] for _ in range(len(els))]
+    eloss = (LandauVavilovBichsel if mpv else BetheBloch)
     for i, (el, t) in enumerate(els):
-        e_mip = BetheBloch(Muon, el, t=t, abst=True).get_minimum()[0]
+        e_mip = eloss(Pion, el, t=t, abst=True).get_minimum()[0]
         rows[i] = [el.Name, str(t), '{:1.1f}'.format(el.SEH * t / 1000) if eh else '{:1.0f}'.format(e_mip)]
         for part in particles:
-            e = BetheBloch(part, el, t, abst=True)(p)
+            e = eloss(part, el, t, abst=True)(p)
             rows[i].append('{:1.1f}'.format(e / e_mip * el.SEH * t / 1000) if eh else '{:1.2f}'.format(e / e_mip))
     if not latex:
         header = ['Material', 'Thickness', 'MIP'] + [p.Name for p in particles]
@@ -72,6 +80,19 @@ def print_eloss(p, latex=False, eh=False):
     else:
         for row in rows:
             print(make_latex_table_row(row, endl=False))
+
+
+def print_eh_loss(p, tex=False):
+    els = [(Dia, 500), (Si, 300), (Si, 100)]
+    rows = []
+    for e, t in els:
+        m, mpv = [f(Pion, e, t, abst=True) for f in [BetheBloch, LandauVavilovBichsel]]
+        d, fac = e.SEH * t / 1000, m.eh_pairs(p) / m.eh_pairs(m.pmin)
+        rows.append([e.Name, str(t)] + [f'{i:.1f}' for i in [d, m.eh_pairs(m.pmin), mpv.eh_pairs(mpv.pmin), d * fac, m.eh_pairs(p), mpv.eh_pairs(p)]])
+    if not tex:
+        print_table(rows, header=['Material', 'Thickness'] + ['Data', 'Mean', 'MPV'] * 2)
+    else:
+        [print(make_latex_table_row(row, endl=False)) for row in rows]
 
 
 def draw_straggling(part=Pion, el=Dia, p=260, t=500, n=1e6, bin_size=1):
