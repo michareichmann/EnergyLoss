@@ -3,6 +3,8 @@
 from src.eloss import *
 from src.straggling import *
 from src.scattering import *
+from src.dose import Dose, a2f
+import helpers.latex as latex
 
 ddraw = Draw(join(Dir, 'main.ini'))
 
@@ -105,6 +107,36 @@ def draw_scattering(part=Electron, el=Dia, t=500, ymax=None, xmin=100, xmax=1e5,
     s = Scattering(part, el, t)
     s.draw(show=False)
     return s.draw(ymax, xmin, xmax, **dkw).F
+
+
+def get_beam_dose(f=None, t=None):
+    f = choose(f, ufloat(10e6, 3e6))
+    t = choose(t, ufloat(2, .5)) * 3600
+    d = Dose(Pion, Dia, t=500, p=260)
+    return f, t, d.Eloss, d(t, f)
+
+
+def get_source_dose(a=None, t=None, r=None):
+    a = choose(a, ufloat(30e6, 5e6))  # Bq
+    t = choose(t, ufloat(4, .5)) * 3600  # hr
+    r = choose(r, ufloat(1.5, .3))  # cm
+    e = BetheBloch(Electron, Dia, abst=True).get_emin() * 1.08  # 90Sr 8% more ionising than mip (from kramberger)
+    return a, r, t, e, Dose(Electron, Dia, eloss=e)(f=a2f(a, r), t=t)
+
+
+def print_doses(f0=None, t0=None, tex=False):
+    f0, t0, e0, d0 = get_beam_dose(f0, t0)
+    a, r, t1, e1, d1 = get_source_dose()
+    if tex:
+        mc, m, u = latex.makecell, latex.math, latex.unit
+        header = latex.bold('Method') + [mc('A', '[MBq]'), mc('r', '[cm]'), mc(m('\\Phi'), u('mhzcm')), mc('t', '[h]'), mc('dE/dx', '[MeV]')] + latex.bold(mc('D', u('micro rad')))
+        rows = [['pion beam', '-', '-'] + latex.si(f0 / 1e6, t0.n / 3600, fmt='.1f') + latex.si(e0 / 1e3, fmt='.2f') + latex.si(d0 * 1e6, fmt='.1f'),
+                ['\\isotope[90]{Sr} source'] + latex.si(a / 1e6, fmt='.0f') + latex.si(r, a2f(a, r) / 1e6, t1.n / 3600, fmt='.1f') + latex.si(e1 / 1e3, fmt='.2f') + latex.si(d1 * 1e6, fmt='.1f')]
+        print(latex.table(header, rows))
+    else:
+        info(f'Beam dose ({f0 / 1e6} MHz/cm² for {t0 / 3600} hrs): {d0} rad')
+        info(f'Source dose ({a / 1e6} MBq in a distance of {r} cm for {t1 / 3600} hrs): {d1} rad')
+    return d0, d1
 
 
 if __name__ == '__main__':
