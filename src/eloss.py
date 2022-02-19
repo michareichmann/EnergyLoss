@@ -87,8 +87,8 @@ class Eloss(object):
         info('Minimum: {:1.2f} Mev/cm at {:1.0f} MeV (betagamma = {:1.2f})'.format(emin, bg * self.P.M, bg), prnt=prnt)
         return emin, bg * self.P.M
 
-    def get_emin(self):
-        return self.get_minimum()[0]
+    def get_emin(self, prnt=False):
+        return self.get_minimum(prnt=prnt)[0]
 
     @property
     def pmin(self):
