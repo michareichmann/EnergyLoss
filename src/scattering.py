@@ -6,7 +6,7 @@ from src.particle import *
 
 class Scattering:
 
-    def __init__(self, part: Particle, el: Element, t=500):
+    def __init__(self, part: Particle, el: Element = None, t=500):
         self.P = part
         self.E = el
         self.T = t
@@ -14,18 +14,18 @@ class Scattering:
 
         self.Draw = Draw(join(Dir, 'main.ini'))
 
-    def __call__(self, p):
-        return self.f(p / self.P.M)
+    def __call__(self, p, x=None):
+        return self.f(p / self.P.M, x)
 
     def __str__(self):
-        return f'Multiple Scattering for {self.P.Name}s in {self.T}μm {self.E.Name}'
+        return f'Multiple Scattering for {self.P.Name}s' + (' in {self.T}μm {self.E.Name}' if self.E else '')
 
     def __repr__(self):
         return self.__str__()
 
-    def f(self, bg):
+    def f(self, bg, x=None):
         p = self.P.M * bg
-        xfac = self.T * 1e-4 * self.E.Density / self.E.X0  # um -> cn
+        xfac = self.E.rad_length(self.T) if x is None else x
         return 1000 * 13.6 / (p * calc_speed(p, self.P.M)) * sqrt(xfac) * (1 + .0038 * log(xfac / bg2b(bg) ** 2))  # mrad
 
     def draw(self, ymax=None, xmin=10, xmax=1e4, **dkw):

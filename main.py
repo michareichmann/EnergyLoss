@@ -139,6 +139,14 @@ def print_doses(f0=None, t0=None, tex=False):
     return d0, d1
 
 
+def print_psi_scattering(ndut=2, nplanes=4, tex=False):
+    s = Scattering(Pion)
+    x_plane = Si.rad_length(285 + 500) + PCB.rad_length(700)
+    x_pad = Dia.rad_length(500) + 2 * Au.rad_length(.2) + 2 * Cr.rad_length(.05)
+    a = s(260, ndut * x_pad + nplanes * x_plane)
+    info('STD of scattering angle: ' + (latex.si(a, unt='mrad')[0] if tex else f'{a:.2f} mrad'))
+
+
 if __name__ == '__main__':
     zd = Straggling(Pion, Dia, 260, 500)
     zs = Straggling(Pion, Si, 260, 300)
