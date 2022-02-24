@@ -1,5 +1,5 @@
-from helpers.draw import choose, sqrt, Draw, join, dirname, realpath, print_table, pm2bg, M_E, e2p, file_exists, constants, interpolate_y, ensure_dir
-from numpy import genfromtxt, array, pi, concatenate, savetxt, zeros, ones
+from helpers.draw import choose, sqrt, Draw, join, dirname, realpath, print_table, pm2bg, M_E, e2p, file_exists, constants, interpolate_y, ensure_dir, warning
+from numpy import genfromtxt, array, concatenate, savetxt, zeros, ones
 import periodictable as pt
 from src.particle import Muon
 
@@ -9,7 +9,7 @@ Dir = dirname(dirname(realpath(__file__)))
 
 class Element(object):
 
-    def __init__(self, el: pt.core.Element, rad_length, e_eh=1., s_eh=1., density=None, name=None, symbol=None):
+    def __init__(self, el: pt.core.Element, rad_length, e_eh=1., s_eh=1., density=None, name=None, symbol=None, muon_data=True):
         self.Name = choose(name, el.name.title())
         self.Symbol = choose(symbol, el.symbol)
         self.Z = el.number
@@ -17,13 +17,16 @@ class Element(object):
         self.DataFile = join(Dir, 'data', 'muons', '{}.txt'.format(self.Name))
         self.EDataFile = join(Dir, 'data', 'electrons', '{}.txt'.format(self.Name))
         self.X0 = rad_length  # g/cm²
-        self.a, self.k, self.x0, self.x1, self.IE, self.C, self.D0 = genfromtxt(self.DataFile, skip_header=4, max_rows=1)
-        self.IE *= 1e-6  # convert to MeV
         self.Density = choose(density, el.density)  # g/cm³
         self.EPlasma = sqrt(self.Density * self.Z / self.A) * 28.816 * 1e-6  # MeV
         self.EEH = e_eh  # eV
         self.SEH = s_eh  # eV/um
         self.Draw = Draw(join(Dir, 'main.ini'))
+        if file_exists(self.DataFile):
+            self.a, self.k, self.x0, self.x1, self.IE, self.C, self.D0 = genfromtxt(self.DataFile, skip_header=4, max_rows=1)
+            self.IE *= 1e-6  # convert to MeV
+        else:
+            warning(f'Muon data for {el} does not exist in {dirname(self.DataFile)}', prnt=muon_data)
 
         # STRAGGLING
         self.NE = constants.physical_constants['Avogadro constant'][0] * self.Density * self.Z / self.A
@@ -65,7 +68,7 @@ class Element(object):
                 return zeros((4, 1))
             data = concatenate([x_ray_data, refr_data])
             e, e1, e2 = data[data[:, 0].argsort()].T
-            e_a = constants.speed_of_light * hbar * sqrt(4 * pi * constants.physical_constants['classical electron radius'][0] * self.NE * 1e6)  # [eV]
+            # e_a = constants.speed_of_light * hbar * sqrt(4 * pi * constants.physical_constants['classical electron radius'][0] * self.NE * 1e6)  # [eV]
             # e2 /= discrete_int(e, e * e2) * 2 / pi / e_a ** 2  # sum rule: int(E*e2 dE) = pi * e_a^2 / 2
             # e1 = kramers_kronig(e, e2)
             data = array([e, e1, e2, e2 * e / ((e1 ** 2 + e2 ** 2) * self.N * constants.speed_of_light * hbar) * 1e16]).T
@@ -90,6 +93,10 @@ class Element(object):
     def e2(self, e):
         i = next(i for i, ie in enumerate(self.E) if e < ie) - 1
         return interpolate_y(*self.E[i:i + 2], *self.E2[i:i + 2], e)
+
+    def rad_length(self, t):
+        """ return radiation length for t [um]"""
+        return t * 1e-4 * self.Density / self.X0  # um -> cm
     # endregion GET
     # -------------------------------------
 
@@ -128,3 +135,8 @@ Dia = Element(pt.carbon, 42.70, e_eh=13.2, s_eh=37, density=3.52, name='Diamond'
 Cu = Element(pt.copper, 12.86)
 Ar = Element(pt.argon, 19.55, density=1.662e-3)
 Pb = Element(pt.lead, 6.37)
+
+# for rad length
+Au = Element(pt.gold, 6.46, muon_data=False)
+Cr = Element(pt.chromium, 14.94, muon_data=False)
+PCB = Element(pt.silicon, 30.1695, density=1.8, muon_data=False)  # http://personalpages.to.infn.it/~tosello/EngMeet/ITSmat/SDD/SDD_G10FR4.html
