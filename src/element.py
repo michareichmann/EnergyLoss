@@ -135,6 +135,7 @@ Dia = Element(pt.carbon, 42.70, e_eh=13.2, s_eh=37, density=3.52, name='Diamond'
 Cu = Element(pt.copper, 12.86)
 Ar = Element(pt.argon, 19.55, density=1.662e-3)
 Pb = Element(pt.lead, 6.37)
+Al = Element(pt.aluminum, 24.01)
 
 # for rad length
 Au = Element(pt.gold, 6.46, muon_data=False)
