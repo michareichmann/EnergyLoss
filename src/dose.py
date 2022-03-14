@@ -3,7 +3,7 @@
 #       calculate dose for a detector
 # created on February 19th 2022 by M. Reichmann (remichae@phys.ethz.ch)
 # --------------------------------------------------------
-from helpers.draw import *
+from plotting.draw import *
 from src.element import *
 from src.particle import *
 from src.eloss import BetheBloch

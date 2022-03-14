@@ -1,6 +1,7 @@
-from helpers.draw import *
-from numpy import log, diff
-from typing import Any
+from numpy import log
+
+from helpers.utils import *
+from plotting.draw import *
 from src.element import *
 from src.particle import *
 

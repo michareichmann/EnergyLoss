@@ -2,7 +2,7 @@
 from os.path import dirname, realpath, join
 from helpers.utils import choose, print_table
 from numpy import genfromtxt, array, mean, sqrt
-from helpers.draw import Draw, format_histo
+from plotting.draw import Draw, format_histo
 
 Dir = dirname(dirname(realpath(__file__)))
 DataDir = join(Dir, 'data', 'semiconductors')

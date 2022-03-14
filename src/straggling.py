@@ -1,11 +1,13 @@
+from ROOT import gRandom
 from numpy import log, euler_gamma, inf, sum, convolve
 from numpy.random import randint
 from scipy.stats import poisson
-from helpers.draw import *
+
+from plotting.draw import *
+from helpers.utils import *
 from src.element import Element, hbar
 from src.eloss import LandauVavilovBichsel
 from src.particle import Particle
-from ROOT import gRandom
 
 MetaDir = join(Dir, 'data', 'meta')
 

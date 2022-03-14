@@ -4,7 +4,7 @@ from src.eloss import *
 from src.straggling import *
 from src.scattering import *
 from src.dose import Dose, a2f
-import helpers.latex as latex
+import plotting.latex as latex
 
 ddraw = Draw(join(Dir, 'main.ini'))
 
@@ -141,10 +141,12 @@ def print_doses(f0=None, t0=None, tex=False):
 
 def print_psi_scattering(ndut=2, nplanes=4, tex=False):
     s = Scattering(Pion)
-    x_plane = Si.rad_length(285 + 500) + PCB.rad_length(700)
-    x_pad = Dia.rad_length(500) + 2 * Au.rad_length(.2) + 2 * Cr.rad_length(.05)
-    a = s(260, ndut * x_pad + nplanes * x_plane)
+    a = s(260, ndut * s.DiaPad + nplanes * s.SiPlane)
     info('STD of scattering angle: ' + (latex.si(a, unt='mrad')[0] if tex else f'{a:.2f} mrad'))
+
+
+def simulate_scattering_residuals(part=Pion, p=260):
+    Scattering(part).print_residuals(p)
 
 
 if __name__ == '__main__':
