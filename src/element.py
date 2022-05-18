@@ -133,7 +133,7 @@ class Element(object):
 
 
 Si = Element(pt.silicon, 21.82, e_eh=3.68, s_eh=81)
-Dia = Element(pt.carbon, 42.70, e_eh=13.2, s_eh=37, density=3.52, name='Diamond', symbol='Dia')
+Dia = Element(pt.carbon, 42.70, e_eh=12.8, s_eh=37, density=3.52, name='Diamond', symbol='Dia')  # kramberger
 Cu = Element(pt.copper, 12.86)
 Ar = Element(pt.argon, 19.55, density=1.662e-3)
 Pb = Element(pt.lead, 6.37)
