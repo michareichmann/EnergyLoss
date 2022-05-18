@@ -84,13 +84,13 @@ def print_eloss(p, latex=False, eh=False, mpv=False):
             print(make_latex_table_row(row, endl=False))
 
 
-def print_eh_loss(p, tex=False):
+def print_eh_loss(p, tex=False, prec=1):
     els = [(Dia, 500), (Si, 300), (Si, 100)]
     rows = []
     for e, t in els:
         m, mpv = [f(Pion, e, t, abst=True) for f in [BetheBloch, LandauVavilovBichsel]]
         d, fac = e.SEH * t / 1000, m.eh_pairs(p) / m.eh_pairs(m.pmin)
-        rows.append([e.Name, str(t)] + [f'{i:.1f}' for i in [d, m.eh_pairs(m.pmin), mpv.eh_pairs(mpv.pmin), d * fac, m.eh_pairs(p), mpv.eh_pairs(p)]])
+        rows.append([e.Name, str(t)] + [f'{i:{f".{prec}f"}}' for i in [d, m.eh_pairs(m.pmin), mpv.eh_pairs(mpv.pmin), d * fac, m.eh_pairs(p), mpv.eh_pairs(p)]])
     if not tex:
         print_table(rows, header=['Material', 'Thickness'] + ['Data', 'Mean', 'MPV'] * 2)
     else:
