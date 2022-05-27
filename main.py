@@ -65,7 +65,7 @@ def get_losses(p, el, t=500):
     return array([BetheBloch(part, el, t, abst=True)(p) for part in [Pion, Muon, Positron, Proton]])
 
 
-def print_eloss(p, latex=False, eh=False, mpv=False):
+def print_eloss(p, tex=False, eh=False, mpv=False):
     particles = [Pion, Muon, Positron, Proton]
     els = [(Dia, 500), (Si, 300), (Si, 100)]
     rows = [[] for _ in range(len(els))]
@@ -76,7 +76,7 @@ def print_eloss(p, latex=False, eh=False, mpv=False):
         for part in particles:
             e = eloss(part, el, t, abst=True)(p)
             rows[i].append('{:1.1f}'.format(e / e_mip * el.SEH * t / 1000) if eh else '{:1.2f}'.format(e / e_mip))
-    if not latex:
+    if not tex:
         header = ['Material', 'Thickness', 'MIP'] + [p.Name for p in particles]
         print_table(rows, header)
     else:
@@ -112,7 +112,7 @@ def draw_scattering(part=Electron, el=Dia, t=500, ymax=None, xmin=100, xmax=1e5,
 def get_beam_dose(f=None, t=None):
     f = choose(f, ufloat(10e6, 3e6))
     t = choose(t, ufloat(2, .5)) * 3600
-    d = Dose(Pion, Dia, t=500, p=260)
+    d = Dose(Pion, Dia, p=260)
     return f, t, d.Eloss, d(t, f)
 
 
@@ -120,7 +120,7 @@ def get_source_dose(a=None, t=None, r=None):
     a = choose(a, ufloat(30e6, 5e6))  # Bq
     t = choose(t, ufloat(4, .5)) * 3600  # hr
     r = choose(r, ufloat(1.5, .3))  # cm
-    e = BetheBloch(Electron, Dia, abst=True).get_emin() * 1.08  # 90Sr 8% more ionising than mip (from kramberger)
+    e = BetheBloch(Electron, Dia).get_emin() * 1.08  # 90Sr 8% more ionising than mip (from kramberger)
     return a, r, t, e, Dose(Electron, Dia, eloss=e)(f=a2f(a, r), t=t)
 
 
@@ -129,13 +129,13 @@ def print_doses(f0=None, t0=None, tex=False):
     a, r, t1, e1, d1 = get_source_dose()
     if tex:
         mc, m, u = latex.makecell, latex.math, latex.unit
-        header = latex.bold('Method') + [mc('A', '[MBq]'), mc('r', '[cm]'), mc(m('\\Phi'), u('mhzcm')), mc('t', '[h]'), mc('dE/dx', '[MeV]')] + latex.bold(mc('D', u('micro rad')))
-        rows = [['pion beam', '-', '-'] + latex.si(f0 / 1e6, t0.n / 3600, fmt='.1f') + latex.si(e0 / 1e3, fmt='.2f') + latex.si(d0 * 1e6, fmt='.1f'),
-                ['\\isotope[90]{Sr} source'] + latex.si(a / 1e6, fmt='.0f') + latex.si(r, a2f(a, r) / 1e6, t1.n / 3600, fmt='.1f') + latex.si(e1 / 1e3, fmt='.2f') + latex.si(d1 * 1e6, fmt='.1f')]
+        header = latex.bold('Method') + [mc('A', u('MBq')), mc('r', u('cm')), mc(m('\\Phi'), u('mhzcm')), mc('t', u('hour')), mc('dE/dx', u('MeV', 'per', 'cm'))] + latex.bold(mc('D', u('gray')))
+        rows = [['pion beam', '-', '-'] + latex.si(f0 / 1e6, t0.n / 3600, fmt='.1f') + latex.si(e0, fmt='.2f') + latex.si(d0, fmt='.1f'),
+                ['\\isotope[90]{Sr} source'] + latex.si(a / 1e6, fmt='.0f') + latex.si(r, a2f(a, r) / 1e6, t1.n / 3600, fmt='.1f') + latex.si(e1, fmt='.2f') + latex.si(d1, fmt='.1f')]
         print(latex.table(header, rows))
     else:
-        info(f'Beam dose ({f0 / 1e6} MHz/cm² for {t0 / 3600} hrs): {d0} rad')
-        info(f'Source dose ({a / 1e6} MBq in a distance of {r} cm for {t1 / 3600} hrs): {d1} rad')
+        info(f'Beam dose ({f0 / 1e6} MHz/cm² for {t0 / 3600} hrs): {d0} Gy')
+        info(f'Source dose ({a / 1e6} MBq in a distance of {r} cm for {t1 / 3600} hrs): {d1} Gy')
     return d0, d1
 
 

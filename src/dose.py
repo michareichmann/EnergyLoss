@@ -12,21 +12,20 @@ from scipy.constants import electron_volt
 
 class Dose:
 
-    def __init__(self, part: Particle, el: Element, t=500, p=260, eloss=None):
-        self.Eloss = choose(eloss, BetheBloch(part, el, t, abst=True)(p))
+    def __init__(self, part: Particle, el: Element, p=260, eloss=None):
+        self.Eloss = choose(eloss, BetheBloch(part, el)(p))  # MeV/cm
         self.P = part
         self.E = el
-        self.T = t
         self.Draw = Draw(join(Dir, 'main.ini'))
 
     def __call__(self, t, f):
         return self.f(t, f)
 
     def __repr__(self):
-        return f'Dose for {self.P.Name}s in {self.T}μm {self.E.Name}'
+        return f'Dose for {self.P.Name}s in {self.E.Name}'
 
     def f(self, t, f):
-        return f * t * self.Eloss / self.E.Density * electron_volt * 1e3 / 100  # g -> kg, Gy -> rad
+        return f * t * self.Eloss / self.E.Density * electron_volt * 1e6 * 1e3  # g -> kg, MeV -> eV
 
 
 def a2f(a, r):
